@@ -1,0 +1,165 @@
+#!/system/bin/sh
+# k6a-controller  v2.0 — God-Mode Toggle (ON/OFF)
+# SM7150 sweet/sweet2
+# ─────────────────────────────────────────────────────────────────────────────
+
+MODDIR="${1:-/data/adb/modules/k6a_tune}"
+CONFIG="$MODDIR/config/settings.conf"
+LOG="$MODDIR/config/service.log"
+DATA="$MODDIR/webroot/data.txt"
+LOG_WEB="$MODDIR/webroot/log.txt"
+GOD_FILE="$MODDIR/config/god_mode"
+THP_FILE="$MODDIR/config/thermal_protect"
+LOCK="$MODDIR/run/controller.pid"
+LOG_FILE="$LOG"
+
+. "$MODDIR/bin/k6a-lib.sh"
+
+STATE="OFF"; TICK=0; _GOD=0; _THP=1
+LAST_LOG_TS=0; LOG_INTERVAL=30
+
+cfg() { grep "^${1}=" "$CONFIG" 2>/dev/null | cut -d= -f2; }
+
+_cfg_load() {
+    DEBUG=$(cfg debug); [ "$DEBUG" != "1" ] && DEBUG=0; CFG_DEBUG=$DEBUG
+    CFG_THRESH=$(cfg thermal_cooking_thresh); CFG_THRESH=${CFG_THRESH:-85}
+    [ "$CFG_THRESH" -lt 70 ] && CFG_THRESH=70; [ "$CFG_THRESH" -gt 95 ] && CFG_THRESH=95
+}
+
+_ratelog() {
+    local now; now=$(date +%s)
+    [ $(( now - LAST_LOG_TS )) -ge "$LOG_INTERVAL" ] && { LAST_LOG_TS=$now; log "$1"; }
+}
+
+_trim_log() {
+    [ -f "$LOG" ] || return
+    local lines; lines=$(wc -l < "$LOG" 2>/dev/null) || return
+    [ "$lines" -gt 500 ] && tail -n 300 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
+}
+
+# ── God-Mode: apply all gaming optimizations ──────────────────────────────
+_god_on() {
+    log "→ GOD-MODE ON"; _cfg_load
+    cpu_hotplug_online_all
+    lmh_disable
+    thermal_disable
+    cpu_set schedutil 1497600 1804800 2169600 2208000
+    gpu_gaming; io_gaming; sched_gaming; vm_gaming; lru_gen_enable
+    wakelock_block; net_gaming; props_gaming
+    apply_irq_affinity; tune_gaming
+    STATE="GAMING"
+    log "GOD-MODE: Silver 1497-1804 Gold 2169-2208 GPU max"
+}
+
+# ── Thermal Cooldown (nur wenn thermal_protect=1) ──────────────────────────
+_do_cooldown() {
+    local temp=$1
+    if [ "$temp" -ge 85 ] 2>/dev/null; then
+        gpu_cooldown 4; w "$P6/scaling_max_freq" 1939200
+        _ratelog "Cooldown L4: ${temp}C"
+    elif [ "$temp" -ge 80 ] 2>/dev/null; then
+        gpu_cooldown 3; w "$P6/scaling_max_freq" 1939200
+        _ratelog "Cooldown L3: ${temp}C"
+    elif [ "$temp" -ge 76 ] 2>/dev/null; then
+        gpu_cooldown 2; w "$P6/scaling_max_freq" 2208000
+        _ratelog "Cooldown L2: ${temp}C"
+    elif [ "$temp" -le 72 ] 2>/dev/null; then
+        gpu_gaming
+        w "$P6/scaling_max_freq" 2208000
+        _ratelog "Cooldown off: ${temp}C"
+    fi
+}
+
+# ── Data Publishing ─────────────────────────────────────────────────────────
+_write_data() {
+    local temp cpu_s cpu_g gpu_mhz gpu_busy bpc btp btpc
+    temp=$(thermal_cpu_temp)
+    cpu_s=$(( $(r "$P0/scaling_cur_freq") / 1000 ))
+    cpu_g=$(( $(r "$P6/scaling_cur_freq") / 1000 ))
+    gpu_mhz=$(( $(r "$GPU/devfreq/cur_freq") / 1000000 ))
+    gpu_busy=$(r "$GPU/gpu_busy_percentage")
+    bpc=$(r /sys/class/power_supply/battery/capacity)
+    btp=$(r /sys/class/power_supply/battery/temp)
+    btpc="$(( btp / 10 )).$(( btp % 10 ))"
+    local uptime_str ram_total ram_avail ram_used
+    uptime_str=$(uptime 2>/dev/null | sed 's/.*up //' | sed 's/,.*//' | xargs)
+    ram_total=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}')
+    ram_avail=$(grep MemAvailable /proc/meminfo 2>/dev/null | awk '{print $2}')
+    ram_used=$(( (ram_total - ram_avail) / 1024 ))
+    ram_total=$(( ram_total / 1024 ))
+    local kv
+    kv=$(uname -r 2>/dev/null || echo "unknown")
+    cat > "${DATA}.tmp" << EOF
+pid=$$
+state=$STATE
+god_mode=$_GOD
+thermal_protect=$_THP
+temp=${temp}
+cpu_sil_mhz=${cpu_s}
+cpu_gold_mhz=${cpu_g}
+gpu_mhz=${gpu_mhz}
+gpu_busy=${gpu_busy}
+bat=${bpc}%
+bat_temp=${btpc}
+kernel=${kv}
+uptime=${uptime_str}
+ram_used=${ram_used}
+ram_total=${ram_total}
+tick=${TICK}
+ts=$(date +%s)
+EOF
+    mv "${DATA}.tmp" "$DATA"
+    tail -30 "$LOG" > "$LOG_WEB" 2>/dev/null || true
+}
+
+# ── Startup ─────────────────────────────────────────────────────────────────
+_startup() {
+    if [ -f "$LOCK" ]; then
+        local op; op=$(r "$LOCK")
+        if [ -n "$op" ] && kill -0 "$op" 2>/dev/null; then
+            err "Controller already running (PID $op)"; exit 1
+        fi
+        rm -f "$LOCK"
+    fi
+    echo $$ > "$LOCK"
+    _cfg_load; _cache_thermal_zones
+    detect_kernel_features
+    printf 'pid=%s\nstate=OFF\ngod_mode=0\ntick=0\nts=%s\n' "$$" "$(date +%s)" > "$DATA" 2>/dev/null || true
+    log "k6a-godmode v2.0 — God-Mode toggle | SM7150 sweet"
+}
+
+# ── Main Loop ───────────────────────────────────────────────────────────────
+_startup
+
+while true; do
+    _god=$(r "$GOD_FILE")
+    _thp=$(r "$THP_FILE")
+    [ "$_god" != "0" ] && _god=1 || _god=0
+    [ "$_thp" != "0" ] && _thp=1 || _thp=0
+    [ "$_GOD" != "$_god" ] && { _GOD=$_god; log "god_mode=${_GOD}"; }
+    [ "$_THP" != "$_thp" ] && { _THP=$_thp; log "thermal_protect=${_THP}"; }
+
+    if [ "$_GOD" = "1" ]; then
+        if [ "$STATE" != "GAMING" ]; then
+            _god_on
+        else
+            # Periodic refresh + thermal check
+            [ $(( TICK % 5 )) -eq 0 ] && tune_gaming
+            if [ "$_THP" = "1" ]; then
+                _temp=$(thermal_cpu_temp)
+                [ "$_temp" -ge "$CFG_THRESH" ] 2>/dev/null && _do_cooldown "$_temp"
+            fi
+            [ $(( TICK % 10 )) -eq 0 ] && {
+                iw dev wlan0 set power_save off 2>/dev/null || true
+                fstrim /data 2>/dev/null || true
+            }
+        fi
+    else
+        [ "$STATE" != "OFF" ] && { STATE="OFF"; log "God-Mode OFF — kernel runs stock"; }
+    fi
+
+    TICK=$(( TICK + 1 ))
+    _write_data
+    [ $(( TICK % 100 )) -eq 0 ] && _trim_log
+    sleep 1
+done
