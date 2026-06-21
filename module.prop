@@ -2,8 +2,9 @@ id=k6a_tune
 name=k6a-godmode
 version=v2.1
 versionCode=4
-author=vandalsquad187
-description=God-Mode toggle for SM7150 (sweet/sweet2) — ON = gaming tuning, OFF = stock kernel | OurKernel-sweet-v4.2.4
+author=BadazZ89
+description=God-Mode toggle for SM6150 (sweet/sweet2)
+ON = gaming tuning - OFF = stock kernel 
 minMagisk=25200
 minApi=33
 updateJson=https://raw.githubusercontent.com/vandalsquad187/k6a-godmode/main/update.json
