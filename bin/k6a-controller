@@ -1,0 +1,199 @@
+#!/system/bin/sh
+# k6a-controller  v2.2 — God-Mode mit CPU-Freeze-Watchdog
+# SM7150 sweet/sweet2
+
+MODDIR="${1:-/data/adb/modules/k6a_tune}"
+CONFIG="$MODDIR/config/settings.conf"
+LOG="$MODDIR/config/service.log"
+DATA="$MODDIR/webroot/data.txt"
+LOG_WEB="$MODDIR/webroot/log.txt"
+GOD_FILE="$MODDIR/config/god_mode"
+THP_FILE="$MODDIR/config/thermal_protect"
+LOCK="$MODDIR/run/controller.pid"
+LOG_FILE="$LOG"
+
+. "$MODDIR/bin/k6a-lib.sh"
+
+STATE="OFF"; TICK=0; _GOD=0; _THP=1; _TSTATE="active"
+LAST_LOG_TS=0; LOG_INTERVAL=30
+
+cfg() { grep "^${1}=" "$CONFIG" 2>/dev/null | cut -d= -f2; }
+
+_cfg_load() {
+    DEBUG=$(cfg debug); [ "$DEBUG" != "1" ] && DEBUG=0; CFG_DEBUG=$DEBUG
+    CFG_THRESH=$(cfg thermal_cooking_thresh); CFG_THRESH=${CFG_THRESH:-85}
+    [ "$CFG_THRESH" -lt 70 ] && CFG_THRESH=70; [ "$CFG_THRESH" -gt 95 ] && CFG_THRESH=95
+    for _v in god_gpu god_sched god_io god_vm god_irq god_net god_props; do
+        _upper=$(echo "$_v" | tr '[:lower:]' '[:upper:]')
+        eval "CFG_${_upper}"=\"$(cfg "$_v")\"
+        eval "[ \"\$CFG_${_upper}\" != \"0\" ] && CFG_${_upper}=1 || CFG_${_upper}=0"
+    done
+}
+
+_ratelog() {
+    local now; now=$(date +%s)
+    [ $(( now - LAST_LOG_TS )) -ge "$LOG_INTERVAL" ] && { LAST_LOG_TS=$now; log "$1"; }
+}
+
+_trim_log() {
+    [ -f "$LOG" ] || return
+    local lines; lines=$(wc -l < "$LOG" 2>/dev/null) || return
+    [ "$lines" -gt 500 ] && tail -n 300 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
+}
+
+_god_on() {
+    log "→ GOD-MODE ON"; _cfg_load
+    cpu_hotplug_online_all
+    lmh_disable
+    thermal_disable
+    cpu_gaming
+    [ "$CFG_GOD_GPU" = "1" ]   && gpu_gaming
+    [ "$CFG_GOD_IO" = "1" ]    && io_gaming
+    [ "$CFG_GOD_SCHED" = "1" ] && sched_gaming
+    [ "$CFG_GOD_VM" = "1" ]    && vm_gaming
+    [ "$CFG_GOD_IRQ" = "1" ]   && apply_irq_affinity
+    [ "$CFG_GOD_NET" = "1" ]   && net_gaming
+    [ "$CFG_GOD_PROPS" = "1" ] && props_gaming
+    lru_gen_enable
+    wakelock_block
+    tune_gaming
+    STATE="GAMING"
+    local active=""
+    [ "$CFG_GOD_GPU" = "1" ]   && active="${active}gpu "
+    [ "$CFG_GOD_SCHED" = "1" ] && active="${active}sched "
+    [ "$CFG_GOD_IO" = "1" ]    && active="${active}io "
+    [ "$CFG_GOD_VM" = "1" ]    && active="${active}vm "
+    [ "$CFG_GOD_IRQ" = "1" ]   && active="${active}irq "
+    [ "$CFG_GOD_NET" = "1" ]   && active="${active}net "
+    [ "$CFG_GOD_PROPS" = "1" ] && active="${active}props "
+    log "mode: $(r "$GOD_FILE") | active: ${active}"
+}
+
+_do_cooldown() {
+    local temp=$1
+    if [ "$temp" -ge 85 ] 2>/dev/null; then
+        gpu_cooldown 4; w "$P6/scaling_max_freq" 1200000
+        _ratelog "Cooldown L4: ${temp}C"
+    elif [ "$temp" -ge 80 ] 2>/dev/null; then
+        gpu_cooldown 3; w "$P6/scaling_max_freq" 1400000
+        _ratelog "Cooldown L3: ${temp}C"
+    elif [ "$temp" -ge 76 ] 2>/dev/null; then
+        gpu_cooldown 2; w "$P6/scaling_max_freq" 1600000
+        _ratelog "Cooldown L2: ${temp}C"
+    elif [ "$temp" -le 72 ] 2>/dev/null; then
+        gpu_gaming
+        w "$P6/scaling_max_freq" 1804800
+        _ratelog "Cooldown off: ${temp}C"
+    fi
+}
+
+_write_data() {
+    local temp cpu_s cpu_g gpu_mhz gpu_busy bpc btp btpc
+    temp=$(thermal_cpu_temp)
+    cpu_s=$(( $(r "$P0/scaling_cur_freq") / 1000 ))
+    cpu_g=$(( $(r "$P6/scaling_cur_freq") / 1000 ))
+    gpu_mhz=$(( $(r "$GPU/devfreq/cur_freq") / 1000000 ))
+    gpu_busy=$(r "$GPU/gpu_busy_percentage")
+    bpc=$(r /sys/class/power_supply/battery/capacity)
+    btp=$(r /sys/class/power_supply/battery/temp)
+    btpc="$(( btp / 10 )).$(( btp % 10 ))"
+    local uptime_str ram_total ram_avail ram_used
+    uptime_str=$(uptime 2>/dev/null | sed 's/.*up //' | sed 's/,.*//' | xargs)
+    ram_total=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}')
+    ram_avail=$(grep MemAvailable /proc/meminfo 2>/dev/null | awk '{print $2}')
+    ram_used=$(( (ram_total - ram_avail) / 1024 ))
+    ram_total=$(( ram_total / 1024 ))
+    local kv
+    kv=$(uname -r 2>/dev/null || echo "unknown")
+    kv2=$(uname -v 2>/dev/null || echo "unknown")
+    : > "$DATA"
+    printf 'pid=%s\n' "$$" >> "$DATA"
+    printf 'modpath=%s\n' "$MODDIR" >> "$DATA"
+    printf 'state=%s\n' "$STATE" >> "$DATA"
+    printf 'god_mode=%s\n' "$_GOD" >> "$DATA"
+    printf 'thermal_protect=%s\n' "$_THP" >> "$DATA"
+    printf 'thermal_state=%s\n' "$_TSTATE" >> "$DATA"
+    printf 'god_gpu=%s\n' "$CFG_GOD_GPU" >> "$DATA"
+    printf 'god_sched=%s\n' "$CFG_GOD_SCHED" >> "$DATA"
+    printf 'god_io=%s\n' "$CFG_GOD_IO" >> "$DATA"
+    printf 'god_vm=%s\n' "$CFG_GOD_VM" >> "$DATA"
+    printf 'god_irq=%s\n' "$CFG_GOD_IRQ" >> "$DATA"
+    printf 'god_net=%s\n' "$CFG_GOD_NET" >> "$DATA"
+    printf 'god_props=%s\n' "$CFG_GOD_PROPS" >> "$DATA"
+    printf 'temp=%s\n' "${temp}" >> "$DATA"
+    printf 'cpu_sil_mhz=%s\n' "${cpu_s}" >> "$DATA"
+    printf 'cpu_gold_mhz=%s\n' "${cpu_g}" >> "$DATA"
+    printf 'gpu_mhz=%s\n' "${gpu_mhz}" >> "$DATA"
+    printf 'gpu_busy=%s\n' "${gpu_busy}" >> "$DATA"
+    printf 'bat=%s\n' "${bpc}%" >> "$DATA"
+    printf 'bat_temp=%s\n' "${btpc}" >> "$DATA"
+    printf 'kernel=%s\n' "${kv}" >> "$DATA"
+    printf 'kernel_v=%s\n' "${kv2}" >> "$DATA"
+    printf 'uptime=%s\n' "${uptime_str}" >> "$DATA"
+    printf 'ram_used=%s\n' "${ram_used}" >> "$DATA"
+    printf 'ram_total=%s\n' "${ram_total}" >> "$DATA"
+    printf 'tick=%s\n' "${TICK}" >> "$DATA"
+    printf 'features=hotplug=%s lru=%s boeffla=%s uclamp=%s thermal_w=%s\n' "${FEATURE_HOTPLUG}" "${FEATURE_LRU_GEN}" "${FEATURE_BOEFFLA}" "${FEATURE_UCLAMP}" "${FEATURE_THERMAL_WRITABLE}" >> "$DATA"
+    printf 'thermal_state=%s\n' "$_TSTATE" >> "$DATA"
+    printf 'gov_sil=%s\n' "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)" >> "$DATA"
+    printf 'gov_gold=%s\n' "$(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_governor 2>/dev/null)" >> "$DATA"
+    printf 'gov_gpu=%s\n' "$(cat /sys/class/kgsl/kgsl-3d0/devfreq/governor 2>/dev/null)" >> "$DATA"
+    printf 'cpu_sil_max=%s\n' "$(($(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2>/dev/null) / 1000))" >> "$DATA"
+    printf 'cpu_gold_max=%s\n' "$(($(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_max_freq 2>/dev/null) / 1000))" >> "$DATA"
+    tail -30 "$LOG" > "$LOG_WEB" 2>/dev/null || true
+}
+
+_startup() {
+    if [ -f "$LOCK" ]; then
+        local op; op=$(r "$LOCK")
+        if [ -n "$op" ] && kill -0 "$op" 2>/dev/null; then
+            err "Controller already running (PID $op)"; exit 1
+        fi
+        rm -f "$LOCK"
+    fi
+    echo $$ > "$LOCK"
+    _cfg_load; _cache_thermal_zones
+    detect_kernel_features
+    printf 'pid=%s\nstate=OFF\ngod_mode=0\n' "$$" > "$DATA" 2>/dev/null || true
+    log "k6a-godmode v2.2 — Kernel-aligned | SM7150 sweet"
+}
+
+_startup
+
+trap 'log "Controller stopped"; thermal_trips_restore; rm -f "$LOCK"' EXIT TERM INT
+
+while true; do
+    _god=$(r "$GOD_FILE")
+    _thp=$(r "$THP_FILE")
+    [ "$_god" != "0" ] && _god=1 || _god=0
+    [ "$_thp" != "0" ] && _thp=1 || _thp=0
+    [ "$_GOD" != "$_god" ] && { _GOD=$_god; log "god_mode=${_GOD}"; }
+    [ "$_THP" != "$_thp" ] && { _THP=$_thp; log "thermal_protect=${_THP}"; }
+
+    if [ "$_GOD" = "1" ]; then
+        if [ "$STATE" != "GAMING" ]; then
+            _god_on
+        else
+            [ $(( TICK % 5 )) -eq 0 ] && tune_gaming
+            [ $(( TICK % 5 )) -eq 0 ] && gpu_adaptive
+            [ $(( TICK % 10 )) -eq 0 ] && _cfg_load
+            if [ "$_THP" = "1" ]; then
+                _temp=$(thermal_cpu_temp)
+                [ "$_temp" -ge "$CFG_THRESH" ] 2>/dev/null && _do_cooldown "$_temp"
+            fi
+            # Minimaler Watchdog: wlan + fstrim (kein Cooling-Kampf mehr)
+            [ $(( TICK % 10 )) -eq 0 ] && {
+                _TSTATE="active"
+                for _if in $(ip link show up 2>/dev/null | grep -o "wlan[0-9]*"); do iw dev "$_if" set power_save off 2>/dev/null || true; done
+                fstrim /data 2>/dev/null || true
+            }
+        fi
+    else
+        [ "$STATE" != "OFF" ] && { STATE="OFF"; _TSTATE="off"; log "God-Mode OFF — kernel runs stock"; }
+    fi
+
+    TICK=$(( TICK + 1 ))
+    [ $(( TICK % 3 )) -eq 0 ] && _write_data
+    [ $(( TICK % 100 )) -eq 0 ] && _trim_log
+    sleep 1
+done
