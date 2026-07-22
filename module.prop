@@ -1,8 +1,8 @@
 id=k6a_tune
 name=k6a-godmode
-version=v2.4
-versionCode=4
+version=v2.5
+versionCode=5
 author=BadazZ89
-description=k6a-godmode v2.4 — Kernel-aligned | SM7150 (sweet/sweet2) | KernelSU Next
-icon=icon.png
-banner=icon.png
+description=k6a-godmode v2.5 — Thermal-Tamed | GPU 650 MHz | _THP 78C | K6Analyze
+icon=icon1.png
+banner=icon1.png

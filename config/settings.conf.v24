@@ -1,6 +1,6 @@
 boot_delay=15
 debug=0
-thermal_cooking_thresh=78
+thermal_cooking_thresh=85
 
 # God-Mode Sub-Toggles (0=aus, 1=an)
 god_gpu=1

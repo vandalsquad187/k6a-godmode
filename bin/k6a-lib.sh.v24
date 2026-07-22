@@ -1,6 +1,6 @@
 #!/system/bin/sh
-# k6a-lib.sh  v2.5 — THERMAL-TAMED (data-driven)
-# SM7150 | GPU adaptive 355/650 MHz | Threshold 78C _THP | min 355 MHz
+# k6a-lib.sh  v2.2 — BALANCED (kernel-aligned)
+# SM7150 | Silver 0-5 (1516MHz) | Gold 6-7 (1804MHz)
 
 unalias r 2>/dev/null || true
 
@@ -18,8 +18,13 @@ CODM_PKG=com.activision.callofduty.shooter
 _TRIP_CACHE=$MODDIR/run/trip_cache
 _TRIP_SAFE="touch|tsp|conn_therm|charger_therm|battery|bms|qcom-bms|xo_therm|pa_therm|pm6150|pm6150l|bcl|vbat|pmic"
 
-FEATURE_HOTPLUG=0; FEATURE_LRU_GEN=0; FEATURE_BOEFFLA=0
-FEATURE_WAKELOCK=0; FEATURE_SCHED_CASS=0; FEATURE_UCLAMP=0; FEATURE_THERMAL_WRITABLE=0
+FEATURE_HOTPLUG=0
+FEATURE_LRU_GEN=0
+FEATURE_BOEFFLA=0
+FEATURE_WAKELOCK=0
+FEATURE_SCHED_CASS=0
+FEATURE_UCLAMP=0
+FEATURE_THERMAL_WRITABLE=0
 
 log()  { printf '[%s] [INFO] %s\n' "$(date '+%H:%M:%S')" "$1" >> "${LOG_FILE:-/dev/null}" 2>/dev/null; }
 warn() { printf '[%s] [WARN] %s\n' "$(date '+%H:%M:%S')" "$1" >> "${LOG_FILE:-/dev/null}" 2>/dev/null; }
@@ -94,10 +99,10 @@ cpu_set() {
 cpu_gaming() {
     cpu_set schedutil 768000 1516800 1036800 1804800
     dbg "CPU BALANCED: Silver 768-1516 Gold 1036-1804 schedutil"
+    # CPU_BOOST: Touch-Input boost für sofortige Gold-Max
     [ -f /sys/module/cpu_boost/parameters/input_boost_freq ] && echo "0:1516800 6:1804800" > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null
     [ -f /sys/module/cpu_boost/parameters/input_boost_ms ] && echo "2000" > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null
 }
-
 # ── GPU ─────────────────────────────────────────────────────────────────────
 gpu_gaming() {
     w $GPU/devfreq/governor        msm-adreno-tz
@@ -106,23 +111,23 @@ gpu_gaming() {
     w $GPU/bus_split               1
     w $GPU/thermal_pwrlevel        0
     w $GPU/max_pwrlevel            0
-    w $GPU/min_pwrlevel            1
+    w $GPU/min_pwrlevel            "$(echo "$GPU_AVAIL_FREQS" | awk '{n=split($0,a); for(i=1;i<=n;i++) if(a[i]==750000000||a[i]==650000000){print i-1; exit}} {print n-2}')"
     w $GPU/devfreq/max_freq        "650000000"
     w $GPU/devfreq/min_freq        "267000000"
     w $GPU/devfreq/polling_interval 20
     w $GPU/pwrscale                1
     printf '%s' "1" > "$GPU/throttling" 2>/dev/null || true
-    dbg "GPU: 650 MHz tpwr=0 min_pwr=1"
+    dbg "GPU BALANCED: min 267MHz max ${GPU_MAX_FREQ}Hz throttling=1"
 }
 
 gpu_cooldown() {
     local level="$1"
     w $GPU/thermal_pwrlevel "$level"
     case "$level" in
-        4) w $GPU/devfreq/max_freq "355000000"; w $GPU/devfreq/min_freq "355000000" ;;
-        3) w $GPU/devfreq/max_freq "430000000"; w $GPU/devfreq/min_freq "430000000" ;;
+        4) w $GPU/devfreq/max_freq "355000000"; w $GPU/devfreq/min_freq "267000000" ;;
+        3) w $GPU/devfreq/max_freq "430000000"; w $GPU/devfreq/min_freq "342000000" ;;
         2) w $GPU/devfreq/max_freq "565000000"; w $GPU/devfreq/min_freq "430000000" ;;
-        *) w $GPU/devfreq/max_freq "$GPU_MAX_FREQ"; w $GPU/devfreq/min_freq "355000000" ;;
+        *) w $GPU/devfreq/max_freq "$GPU_MAX_FREQ"; w $GPU/devfreq/min_freq "267000000" ;;
     esac
     w $GPU/force_clk_on 1; w $GPU/force_bus_on 1
     printf '%s' "0" > "$GPU/throttling" 2>/dev/null || true
@@ -161,7 +166,7 @@ thermal_trips_raise() {
     done
     local count=0
     [ -f "$_TRIP_CACHE" ] && count=$(wc -l < "$_TRIP_CACHE" 2>/dev/null || echo 0)
-    dbg "Thermal trips raised to $(( target_temp / 1000 ))C, $count cached"
+    dbg "Thermal trips raised to $(( target_temp / 1000 ))°C, $count cached"
 }
 
 thermal_trips_restore() {
@@ -187,6 +192,7 @@ thermal_cooling_reset() {
     done
     dbg "Cooling devices reset"
 }
+
 
 thermal_cpu_temp() {
     local t
@@ -241,7 +247,7 @@ sched_gaming() {
     w "$P6/schedutil/hispeed_freq"        1804800
     w "$P0/schedutil/pl"                  0
     w "$P6/schedutil/pl"                  0
-    dbg "Sched: EAS=1 uclamp top=0-80 up_rate=500 down=20000 hispeed=80"
+    dbg "Sched BALANCED: EAS=1 sched_boost=0 uclamp top=0-80 up_rate=2000 hispeed=80 pl=0"
 }
 
 # ── IO ──────────────────────────────────────────────────────────────────────
@@ -269,7 +275,7 @@ vm_gaming() {
     w /proc/sys/vm/watermark_scale_factor    10
     w /proc/sys/vm/min_free_kbytes         8192
     w /proc/sys/vm/page-cluster              0
-    dbg "VM: dirty_expire=3000 watermark=10 min_free=8M"
+    dbg "VM BALANCED: dirty_expire=3000 dirty_ratio=15 watermark=10 min_free=8M"
 }
 
 vm_zram_reset() {
@@ -308,7 +314,7 @@ apply_irq_affinity() {
         name=$(r "${dir}actions")
         echo "$name" | grep -Eqi "wlan|rmnet|gsi|^ipa" && printf '%s' "04" > "${dir}smp_affinity" 2>/dev/null || true
     done
-    dbg "IRQ affinity: Touch->cpu4 UFS->cpu1 Net->cpu2"
+    dbg "IRQ affinity: Touch→cpu4 UFS→cpu1 Net→cpu2"
 }
 
 # ── LMH ─────────────────────────────────────────────────────────────────────
@@ -328,6 +334,7 @@ lmh_disable() {
         case "$(basename "$node")" in *limit*|*thermal*|*dcvs*) printf '%s' "0" > "$node" 2>/dev/null || true ;; esac
     done
     w "$P6/scaling_max_freq" 1804800
+    # schedutil rate limits: schnelleres Hochtakten für Gaming
     echo 500 > "/sys/devices/system/cpu/cpufreq/policy6/schedutil/up_rate_limit_us" 2>/dev/null || true
     echo 20000 > "/sys/devices/system/cpu/cpufreq/policy6/schedutil/down_rate_limit_us" 2>/dev/null || true
     echo 500 > "/sys/devices/system/cpu/cpufreq/policy0/schedutil/up_rate_limit_us" 2>/dev/null || true
@@ -351,7 +358,7 @@ net_gaming() {
         iw dev "$iface" set power_save off 2>/dev/null || true
     done
     [ "${CFG_NET_QOS:-0}" = "1" ] && net_qos_apply "$iface"
-    dbg "Net: cubic retries=8 512K buffers"
+    dbg "Net BALANCED: cubic low_latency=0 retries=8 512K buffers"
 }
 
 net_qos_apply() {
@@ -410,11 +417,11 @@ clean_cache() {
 }
 
 clean_ram() {
+}
     sync
     printf '%s' "3" > /proc/sys/vm/drop_caches 2>/dev/null || true
     printf '%s' "1" > /proc/sys/vm/compact_memory 2>/dev/null || true
     printf '%s' "0" > /proc/sys/vm/drop_caches 2>/dev/null || true
-}
 
 thermal_disable() {
     thermal_trips_raise
@@ -424,28 +431,20 @@ thermal_disable() {
 
 # ── GPU Adaptive ─────────────────────────────────────────────────────────────
 gpu_adaptive() {
-    local busy max_freq tpl
+    local busy max_freq
     busy=$(cat /sys/class/kgsl/kgsl-3d0/gpu_busy_percentage 2>/dev/null || echo 0)
     busy=${busy%\%}
-    case "$busy" in ''|*[!0-9]*) busy=0 ;; esac
-
-    # Watchdog: thermal_pwrlevel > 4 (267 MHz) unter Last -> zurücksetzen
-    tpl=$(cat /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 2>/dev/null || echo 0)
-    if [ "$tpl" -gt 4 ] && [ "$busy" -gt 30 ] 2>/dev/null; then
-        w /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 0
-        w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq 650000000
-        dbg "GPU TPWR reset: ${tpl}->0 (busy=${busy}%)"
-    fi
-
-    # Adaptive: idle 355 MHz, gaming 650 MHz (kein 800 Boost)
-    if [ "$busy" -lt 30 ] 2>/dev/null; then
+    case "$busy" in
+        ''|*[!0-9]*) busy=0 ;;
+    esac
+    if   [ "$busy" -lt 30 ] 2>/dev/null; then
         max_freq=355000000
-    else
+    elif [ "$busy" -lt 65 ] 2>/dev/null; then
         max_freq=650000000
+    else
+        max_freq=800000000
     fi
-
-    local cur
-    cur=$(cat /sys/class/kgsl/kgsl-3d0/devfreq/max_freq 2>/dev/null || echo 0)
+    local cur; cur=$(cat /sys/class/kgsl/kgsl-3d0/devfreq/max_freq 2>/dev/null || echo 0)
     [ "$cur" != "$max_freq" ] && w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq "$max_freq"
-    dbg "GPU adaptive: busy=${busy}% tpwr=${tpl} max=${max_freq}Hz"
+    dbg "GPU adaptive: busy=${busy}% → max_freq=${max_freq}Hz"
 }

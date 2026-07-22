@@ -1,5 +1,6 @@
 #!/system/bin/sh
-# k6a-controller  v2.5 — Thermal-Tamed | GPU adaptive 650 MHz | _THP 78C
+# k6a-controller  v2.2 — God-Mode mit CPU-Freeze-Watchdog
+# SM7150 sweet/sweet2
 
 MODDIR="${1:-/data/adb/modules/k6a_tune}"
 CONFIG="$MODDIR/config/settings.conf"
@@ -20,7 +21,7 @@ cfg() { grep "^${1}=" "$CONFIG" 2>/dev/null | cut -d= -f2; }
 
 _cfg_load() {
     DEBUG=$(cfg debug); [ "$DEBUG" != "1" ] && DEBUG=0; CFG_DEBUG=$DEBUG
-    CFG_THRESH=$(cfg thermal_cooking_thresh); CFG_THRESH=${CFG_THRESH:-78}
+    CFG_THRESH=$(cfg thermal_cooking_thresh); CFG_THRESH=${CFG_THRESH:-85}
     [ "$CFG_THRESH" -lt 70 ] && CFG_THRESH=70; [ "$CFG_THRESH" -gt 95 ] && CFG_THRESH=95
     for _v in god_gpu god_sched god_io god_vm god_irq god_net god_props; do
         _upper=$(echo "$_v" | tr '[:lower:]' '[:upper:]')
@@ -41,7 +42,7 @@ _trim_log() {
 }
 
 _god_on() {
-    log "-> GOD-MODE ON"; _cfg_load
+    log "→ GOD-MODE ON"; _cfg_load
     cpu_hotplug_online_all
     lmh_disable
     thermal_disable
@@ -146,16 +147,7 @@ _startup() {
     if [ -f "$LOCK" ]; then
         local op; op=$(r "$LOCK")
         if [ -n "$op" ] && kill -0 "$op" 2>/dev/null; then
-            local cname
-            cname=$(cat /proc/$op/comm 2>/dev/null)
-            case "$cname" in
-                k6a-controller|sh) ;;
-                *) cname="" ;;
-            esac
-            if [ -n "$cname" ]; then
-                err "Controller already running (PID $op)"; exit 1
-            fi
-            warn "Stale lock (PID $op is $cname), removing"
+            err "Controller already running (PID $op)"; exit 1
         fi
         rm -f "$LOCK"
     fi
@@ -163,8 +155,9 @@ _startup() {
     _cfg_load; _cache_thermal_zones
     detect_kernel_features
     printf 'pid=%s\nstate=OFF\ngod_mode=0\n' "$$" > "$DATA" 2>/dev/null || true
-    log "k6a-godmode v2.5 — Thermal-Tamed | SM7150 sweet"
+    log "k6a-godmode v2.2 — Kernel-aligned | SM7150 sweet"
 }
+
 _startup
 
 trap 'log "Controller stopped"; thermal_trips_restore; rm -f "$LOCK"' EXIT TERM INT
@@ -188,6 +181,7 @@ while true; do
                 _temp=$(thermal_cpu_temp)
                 [ "$_temp" -ge "$CFG_THRESH" ] 2>/dev/null && _do_cooldown "$_temp"
             fi
+            # Minimaler Watchdog: wlan + fstrim (kein Cooling-Kampf mehr)
             [ $(( TICK % 10 )) -eq 0 ] && {
                 _TSTATE="active"
                 for _if in $(ip link show up 2>/dev/null | grep -o "wlan[0-9]*"); do iw dev "$_if" set power_save off 2>/dev/null || true; done
@@ -195,7 +189,7 @@ while true; do
             }
         fi
     else
-        [ "$STATE" != "OFF" ] && { STATE="OFF"; _TSTATE="off"; log "God-Mode OFF"; }
+        [ "$STATE" != "OFF" ] && { STATE="OFF"; _TSTATE="off"; log "God-Mode OFF — kernel runs stock"; }
     fi
 
     TICK=$(( TICK + 1 ))
