@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# k6a-controller  v2.5 — Thermal-Tamed | GPU adaptive 650 MHz | _THP 78C
+# k6a-controller  v2.5.1 — Blackscreen-Fix | Thermal nur bei THP=1
 
 MODDIR="${1:-/data/adb/modules/k6a_tune}"
 CONFIG="$MODDIR/config/settings.conf"
@@ -43,8 +43,8 @@ _trim_log() {
 _god_on() {
     log "-> GOD-MODE ON"; _cfg_load
     cpu_hotplug_online_all
-    lmh_disable
-    thermal_disable
+    [ "$_THP" = "1" ] && lmh_disable
+    [ "$_THP" = "1" ] && thermal_disable
     cpu_gaming
     [ "$CFG_GOD_GPU" = "1" ]   && gpu_gaming
     [ "$CFG_GOD_IO" = "1" ]    && io_gaming
