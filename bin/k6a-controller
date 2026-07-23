@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# k6a-controller  v2.5.1 — Blackscreen-Fix | Thermal nur bei THP=1
+# k6a-controller  v2.5.2 — Blackscreen-Fix + GPU-Konflikt gelöst | force_clk_on=1 min_pwr=4
 
 MODDIR="${1:-/data/adb/modules/k6a_tune}"
 CONFIG="$MODDIR/config/settings.conf"
