@@ -102,17 +102,17 @@ cpu_gaming() {
 gpu_gaming() {
     w $GPU/devfreq/governor        msm-adreno-tz
     w $GPU/force_clk_on            1
-    w $GPU/force_bus_on            1
-    w $GPU/bus_split               0
+    w $GPU/force_bus_on            0
+    w $GPU/bus_split               1
     w $GPU/thermal_pwrlevel        0
     w $GPU/max_pwrlevel            0
     w $GPU/min_pwrlevel            4
-    w $GPU/devfreq/max_freq        "$GPU_MAX_FREQ"
+    w $GPU/devfreq/max_freq        "650000000"
     w $GPU/devfreq/min_freq        "355000000"
-    w $GPU/devfreq/polling_interval 5
+    w $GPU/devfreq/polling_interval 20
     w $GPU/pwrscale                1
-    printf '%s' "0" > "$GPU/throttling" 2>/dev/null || true
-    dbg "GPU: max=${GPU_MAX_FREQ}Hz tpwr=0 min_pwr=4 force=1"
+    printf '%s' "1" > "$GPU/throttling" 2>/dev/null || true
+    dbg "GPU: 650 MHz tpwr=0 min_pwr=4"
 }
 
 gpu_cooldown() {
@@ -444,10 +444,10 @@ gpu_adaptive() {
         max_freq=650000000
     fi
 
-    local cur min_allowed
+    local min_freq=$(cat $GPU/devfreq/min_freq 2>/dev/null || echo 0)
+    [ "$max_freq" -lt "$min_freq" ] 2>/dev/null && max_freq=$min_freq
+    local cur
     cur=$(cat /sys/class/kgsl/kgsl-3d0/devfreq/max_freq 2>/dev/null || echo 0)
-    min_allowed=$(cat /sys/class/kgsl/kgsl-3d0/devfreq/min_freq 2>/dev/null || echo 355000000)
-    [ "$max_freq" -lt "$min_allowed" ] 2>/dev/null && max_freq=$min_allowed
     [ "$cur" != "$max_freq" ] && w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq "$max_freq"
     dbg "GPU adaptive: busy=${busy}% tpwr=${tpl} max=${max_freq}Hz"
 }
