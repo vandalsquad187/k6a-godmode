@@ -1,5 +1,50 @@
 # Changelog – k6a-godmode
 
+## v2.5.3 – GPU-Clamp + Polling-Interval
+
+### GPU-Adaptive Safety-Clamp
+- `gpu_adaptive()`: max_freq wird nie unter devfreq/min_freq gesetzt
+- Statt hardgecodedem min_allowed=355M → dynamisch via devfreq/min_freq
+
+### GPU Gaming optimiert
+- `throttling=1` (Kernel-Throttle aktiv)
+- `force_bus_on=0` (Bus Power Collapse erlaubt)
+- `bus_split=1` (Bus-Splitting aktiv)
+- `polling_interval=20` (weniger CPU-Last durch Gov)
+- `max_freq=650000000` (explizit statt $GPU_MAX_FREQ)
+
+### Changelog + Module-Icons
+- CHANGELOG.md aktualisiert mit allen v2.5.x Einträgen
+- icon1.png + background.png im Repo (für KSU Manager)
+
+---
+
+## v2.5.2 – GPU-Konflikte gelöst
+
+### force_clk_on=1 (Fix: GPU Power-Collapse Freezes)
+- GPU force_clk_on=1 – verhindert Power-Collapse der GPU-Clock
+- Behebt Framedrops (50→30fps nach 1h CODM) durch Adreno-Treiber-Konflikt
+- GPU `min_pwrlevel=4` (355 MHz Floor)
+- GPU `devfreq/min_freq=355M` (doppelte Absicherung)
+
+### Blackscreens behoben
+- `lmh_disable` + `thermal_disable` in `_god_on()` nur noch bei `_THP=1`
+- Bei `_THP=0` bleiben Kernel-Thermal-Safeguards aktiv → keine Blackscreens
+- K6Analyze-Logs bestätigt: kein Crash, kein Watchdog, kein Overheating (max 68.7°C)
+
+### PID-Recycling-Fix
+- `_startup()`: `kill -0` + `/proc/$op/comm` Check auf `k6a-controller|sh`
+- service.sh: `while true` Restart entfernt → einmaliger `nohup ... &`
+
+---
+
+## v2.5.1 – Blackscreen-Fix: Thermal nur bei THP=1
+- `lmh_disable` und `thermal_disable` nur noch bei `_THP=1`
+- Bei `_THP=0` (default) bleibt Kernel-Thermal intakt
+- Verhindert Blackscreens durch Zerstörung des Kernel-Thermal ohne Modul-Cooldown
+
+---
+
 ## v2.5 – Thermal-Tamed (data-driven) 🔥
 
 ### Analyse-basierte Optimierung
