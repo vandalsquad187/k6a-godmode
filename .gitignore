@@ -1,0 +1,11 @@
+# Runtime
+run/*
+config/service.log
+config/god_mode
+config/thermal_protect
+config/cache_last_cleaned
+webroot/log.txt
+webroot/data.txt
+# Backups
+*.bak
+*.v24
