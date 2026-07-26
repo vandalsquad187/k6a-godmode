@@ -1,4 +1,4 @@
-# k6a-godmode v2.5.3
+# k6a-godmode v2.5.4
 
 GPU-adaptives God-Mode für **SM7150 (sweet/sweet2)** mit **v4.2.6 Kernel** – entwickelt und optimiert für CODM Battle Royale.
 
