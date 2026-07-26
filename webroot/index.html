@@ -17,7 +17,7 @@ body{background:#0a0e17;color:#c8d6e5;font-family:system-ui,-apple-system,sans-s
 .row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;position:relative}
 .row + .row{border-top:1px solid #1a2332}
 .label{font-size:14px;color:#c8d6e5}
-.val{font-size:14px;color:#6b7f9a;font-weight:500}
+.val{font-size:14px;color:#6b7f9a;font-weight:500;text-align:right}
 .highlight{color:var(--a)}
 .temp{color:#ff6b6b}
 .toggle{position:relative;width:44px;height:24px;flex-shrink:0;cursor:pointer}
@@ -26,6 +26,8 @@ body{background:#0a0e17;color:#c8d6e5;font-family:system-ui,-apple-system,sans-s
 .slider::before{content:'';position:absolute;left:3px;bottom:3px;width:18px;height:18px;background:#6b7f9a;border-radius:50%;transition:.3s}
 .toggle input:checked + .slider{background:var(--a)}
 .toggle input:checked + .slider::before{background:#fff;transform:translateX(20px)}
+.toggle.pending .slider{opacity:0.5}
+.toggle.pending input:checked + .slider{background:#664400}
 .chip{display:inline-block;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;margin:3px;cursor:pointer;border:none;color:#fff;position:relative}
 .chip.blue{background:var(--a)}
 .chip.green{background:#1b8a3d}
@@ -73,19 +75,22 @@ body{background:#0a0e17;color:#c8d6e5;font-family:system-ui,-apple-system,sans-s
 <h2>God-Mode</h2>
 <div class="row">
 <span class="label">God-Mode</span>
-<label class="toggle"><input type="checkbox" id="godToggle" onchange="setGod(this.checked?1:0)"><span class="slider"></span></label>
+<label class="toggle"><input type="checkbox" id="godToggle" onchange="setGod(this.checked?1:0);this.parentElement.classList.toggle('pending')"><span class="slider"></span></label>
 </div>
 <div class="row">
 <span class="label">Thermal Protect</span>
-<label class="toggle"><input type="checkbox" id="thpToggle" onchange="setThp(this.checked?1:0)"><span class="slider"></span></label>
+<label class="toggle"><input type="checkbox" id="thpToggle" onchange="setThp(this.checked?1:0);this.parentElement.classList.toggle('pending')"><span class="slider"></span></label>
 </div>
+    <div class="row">
+        <span class="label">WiFi Boost</span>
+        <label class="toggle"><input type="checkbox" id="wifiToggle" onchange="setWifi(this.checked?1:0);this.parentElement.classList.toggle('pending')"><span class="slider"></span></label>
+    </div>
 </div>
 
 <div class="card">
 <h2>Status</h2>
 <div class="row"><span class="label">State</span><span class="val" id="st">OFF<span id="stStale"></span></span></div>
 <div class="row"><span class="label">Temp</span><span class="al temp" id="tp">--°C</span></div>
-<div class="row"><span class="label">Thermal</span><span class="val" id="ts">--</span></div>
 <div class="row"><span class="label">CPU Silver</span><span class="val" id="cs">-- MHz</span></div>
 <div class="row"><span class="label">CPU Gold</span><span class="val" id="cg">-- MHz</span></div>
 <div class="row"><span class="label">GPU</span><span class="val" id="gm">-- MHz</span></div>
@@ -166,6 +171,7 @@ body{background:#0a0e17;color:#c8d6e5;font-family:system-ui,-apple-system,sans-s
 <div class="row"><span class="label">Kernel</span><span class="val" id="k_r"></span></div>
 <div class="row"><span class="label">Build</span><span class="val" id="k_" style="font-size:11px;word-break:break-all"></span></div>
 <div class="row"><span class="label">Status</span><span class="val" id="k_check"></span></div>
+<div class="row"><span class="label">Thermal</span><span class="val" id="ts">--</span></div>
 <div class="row"><span class="label">Features</span><span class="val" id="featBadges"></span></div>
 </div>
 </div>
@@ -215,14 +221,13 @@ function gpuTurbo(){var gp='/sys/class/kgsl/kgsl-3d0';ksuExec('echo performance 
 function revertTune(){ksuExec('echo 0 > '+d.modpath+'/config/god_mode 2>/dev/null; sleep 0.5; echo 1 > '+d.modpath+'/config/god_mode 2>/dev/null');document.getElementById('cgov').textContent='↺ reverting...'}
 
 // Load saed accent
-(function(){var a=localStorage.getItem('k6a_accent');if(a)setAccent(a)}());
+function debugDump(){document.getElementById("logBox").textContent=JSON.stringify(d,null,2)};function refreshData(){var x=new XMLHttpRequest();x.open("GET","data.txt?_="+Date.now(),true);x.onload=function(){d={};x.responseText.split("\n").forEach(function(l){var i=l.indexOf("=");if(i>0)d[l.slice(0,i)]=l.slice(i+1)});updateUI()};x.onerror=function(){fetch("data.txt?_="+Date.now()).then(function(r){return r.text()}).then(function(t){d={};t.split("\n").forEach(function(l){var i=l.indexOf("=");if(i>0)d[l.slice(0,i)]=l.slice(i+1)});updateUI()}).catch(function(){})};x.send()}
 
-function debugDump(){document.getElementById("logBox").textContent=JSON.stringify(d,null,2)};function refreshData(){var x=new XMLHttpRequest();x.open('GET','data.txt?_='+Date.now(),true);x.onload=function(){d={};x.responseText.split('\n').forEach(function(l){var i=l.indexOf('=');if(i>0)d[l.slice(0,i)]=l.slice(i+1)});updateUI()};x.onerror=function(){fetch('data.txt?_='+Date.now()).then(function(r){return r.text()}).then(function(t){d={};t.split('\n').forEach(function(l){var i=l.indexOf('=');if(i>0)d[l.slice(0,i)]=l.slice(i+1)});updateUI()}).catch(function(){})};x.send()}
 
 function updateUI(){
 document.getElementById('st').textContent=d.state||'OFF';
 document.getElementById('tp').textContent=(d.temp||'--')+'°C';
-var _ts=document.getElementById('ts');if(_ts){var tsMap={hold:'<span style="color:#ff6b6b">⚠️ hold</span>',active:'<span style="color:#4ade80">✅ active</span>',cooldown:'<span style="color:#c97d1a">🔸 cooldown</span>',off:'<span style="color:#6b7f9a">○ off</span>'};_ts.innerHTML=tsMap[d.thermal_state]||'--'}
+var _ts=document.getElementById('ts');if(_ts){var tsMap={hold:'<span style="color:#ff6b6b">⚠️ hold</span>',active:'<span style="color:#4ade80">active ✅</span>',cooldown:'<span style="color:#c97d1a">🔸 cooldown</span>',off:'<span style="color:#6b7f9a">○ off</span>'};_ts.innerHTML=tsMap[d.thermal_state]||'--'}
 document.getElementById('cs').textContent=(d.cpu_sil_mhz||'--')+' MHz';
 document.getElementById('cg').textContent=(d.cpu_gold_mhz||'--')+' MHz';
 document.getElementById('gm').textContent=(d.gpu_mhz||'--')+' MHz';
@@ -231,6 +236,7 @@ document.getElementById('bc').textContent=d.bat||'--';
 document.getElementById('rm').textContent=(d.ram_used||'--')+'/'+(d.ram_total||'--')+' MB';
 if(_pendingGod===null){document.getElementById("godToggle").checked=d.god_mode==="1"}else if(d.god_mode===String(_pendingGod)){_pendingGod=null}
 if(_pendingThp===null){document.getElementById("thpToggle").checked=d.thermal_protect==="1"}else if(d.thermal_protect===String(_pendingThp)){_pendingThp=null}
+if(_pendingWifi===null){document.getElementById("wifiToggle").checked=d.wifi_boost==="1"}else if(d.wifi_boost===String(_pendingWifi)){_pendingWifi=null}
 
 let items={gpu:'GPU',sched:'Sched',io:'IO',vm:'VM',irq:'IRQ',net:'Net',props:'Props'};
 for(let k in items){let v=d['god_'+k];if(document.getElementById('st_'+k))document.getElementById('st_'+k).checked=v==='1'}
@@ -242,7 +248,7 @@ var _kr=d.kernel||'--';
 document.getElementById('k_r').textContent=_kr;
 document.getElementById('k_').textContent=d.kernel_v||'--';
 var isCustom=_kr.includes('OurKernel')||_kr.includes('K6A')||_kr.includes('g6901011')||(d.kernel_v||'').includes('PREEMPT');
-document.getElementById('k_check').innerHTML=isCustom?'<span style="color:#4ade80;font-size:16px">Badazz89 ✅</span>':'<span style="color:#6b7f9a">Stock</span>';
+document.getElementById('k_check').innerHTML=isCustom?'<span style="color:#4ade80;font-size:16px">Badazz89-Kernel ✅</span>':'<span style="color:#6b7f9a">Stock</span>';
 
 // Stale warning
 var _lt=window._k6aTick||0,_t=parseInt(d.tick)||0;
@@ -262,12 +268,12 @@ var _gs=d.gov_gpu||'--',_cs=d.cpu_sil_max||'?',_cgm=d.cpu_gold_max||'?',_sl=d.go
 if(_gg)_gg.textContent=_gs;if(_cm)_cm.textContent=_cs+'/'+_cgm+' MHz';if(_cg)_cg.textContent=_sl;
 }
 
-var _pendingGod=null;var _pendingThp=null;
+var _pendingGod=null;var _pendingThp=null;var _pendingWifi=null;
 function ksuExec(cmd){try{if(window.ksu&&window.ksu.exec)window.ksu.exec(cmd);else if(window.KernelSU&&window.KernelSU.exec)window.KernelSU.exec(cmd);else if(window.kernelsu&&window.kernelsu.exec)window.kernelsu.exec(cmd);else fetch('/api?cmd='+encodeURIComponent(cmd))}catch(e){}}
-function setGod(v){if(!d.modpath)return;_pendingGod=v;d.god_mode=v+'';document.getElementById('godToggle').checked=v==1||v==='1';d.state=v==1||v==='1'?'GAMING':'OFF';document.getElementById('st').textContent=d.state;ksuExec('echo "'+v+'" > '+d.modpath+'/config/god_mode')}
-function setThp(v){if(!d.modpath)return;_pendingThp=v;d.thermal_protect=v+'';document.getElementById('thpToggle').checked=v==1||v==='1';ksuExec('echo "'+v+'" > '+d.modpath+'/config/thermal_protect')}
+function setGod(v){if(!d.modpath)return;_pendingGod=v;d.god_mode=v+'';document.getElementById('godToggle').checked=v==1||v==='1';d.state=v==1||v==='1'?'GAMING':'OFF';document.getElementById('st').textContent=d.state;ksuExec('echo "'+v+'" > '+d.modpath+'/config/god_mode');setTimeout(refreshData,500)}
+function setThp(v){if(!d.modpath)return;_pendingThp=v;d.thermal_protect=v+'';document.getElementById('thpToggle').checked=v==1||v==='1';ksuExec('echo "'+v+'" > '+d.modpath+'/config/thermal_protect');setTimeout(refreshData,500)}
 
-function setSub(name,v){if(!d.modpath)return;d['god_'+name]=v+'';document.getElementById('st_'+name).checked=v==1||v==='1';ksuExec('sed -i s/^god_'+name+'=./god_'+name+'='+v+'/ '+d.modpath+'/config/settings.conf')}
+function setSub(name,v){if(!d.modpath)return;d['god_'+name]=v+'';document.getElementById('st_'+name).checked=v==1||v==='1';ksuExec("sed -i 's/^god_"+name+"=.*/god_"+name+"="+v+"/' "+d.modpath+"/config/settings.conf")}
 
 function fetchLog(){fetch('log.txt?_='+Date.now()).then(r=>r.text()).then(t=>document.getElementById('logBox').textContent=t||'(empty)').catch(()=>document.getElementById('logBox').textContent='(error)')}
 
@@ -281,6 +287,8 @@ m['PID']=d.pid||'--';
 m['State']='State: '+(d.state||'OFF')+'  God: '+(d.god_mode||'0')+'  THP: '+(d.thermal_protect||'1');
 document.getElementById('cmdOut').textContent=m[q]||'unknown'
 }
+
+function setWifi(v){if(!d.modpath)return;_pendingWifi=v;d.wifi_boost=v+"";document.getElementById("wifiToggle").checked=v==1||v==="1";ksuExec("sed -i 's/^wifi_boost=.*/wifi_boost="+v+"/' "+d.modpath+"/config/settings.conf");setTimeout(refreshData,500)}
 
 function toggleFullscreen(on){
 try{

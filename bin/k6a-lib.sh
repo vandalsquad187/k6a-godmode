@@ -43,6 +43,7 @@ w() {
 }
 
 r() { cat "$1" 2>/dev/null || echo "0"; }
+r_safe() { timeout 2 cat "$1" 2>/dev/null || echo "0"; }
 
 detect_kernel_features() {
     FEATURE_HOTPLUG=0; FEATURE_LRU_GEN=0; FEATURE_BOEFFLA=0
@@ -101,18 +102,19 @@ cpu_gaming() {
 # ── GPU ─────────────────────────────────────────────────────────────────────
 gpu_gaming() {
     w $GPU/devfreq/governor        msm-adreno-tz
-    w $GPU/force_clk_on            1
+    w $GPU/force_clk_on            0
     w $GPU/force_bus_on            0
     w $GPU/bus_split               1
     w $GPU/thermal_pwrlevel        0
     w $GPU/max_pwrlevel            0
-    w $GPU/min_pwrlevel            4
-    w $GPU/devfreq/max_freq        "650000000"
-    w $GPU/devfreq/min_freq        "355000000"
+    w $GPU/min_pwrlevel            0
+    w $GPU/devfreq/max_freq "800000000"
+    w $GPU/devfreq/min_freq        "267000000"
     w $GPU/devfreq/polling_interval 20
     w $GPU/pwrscale                1
-    printf '%s' "1" > "$GPU/throttling" 2>/dev/null || true
-    dbg "GPU: 650 MHz tpwr=0 min_pwr=4"
+    printf '%s' 0 > "$GPU/throttling" 2>/dev/null || true
+    printf '%s' 1 > "$GPU/force_no_nap" 2>/dev/null || true
+    dbg "GPU: 800 MHz tpwr=0 min_pwr=0 force_no_nap=1 throttling=0"
 }
 
 gpu_cooldown() {
@@ -125,7 +127,7 @@ gpu_cooldown() {
         *) w $GPU/devfreq/max_freq "$GPU_MAX_FREQ"; w $GPU/devfreq/min_freq "355000000" ;;
     esac
     w $GPU/force_clk_on 1; w $GPU/force_bus_on 1
-    printf '%s' "0" > "$GPU/throttling" 2>/dev/null || true
+    printf '%s' 1 > "$GPU/throttling" 2>/dev/null || true
     dbg "GPU cooldown level=$level"
 }
 
@@ -231,17 +233,19 @@ sched_gaming() {
     w /proc/sys/kernel/sched_downmigrate      60
     w /proc/sys/kernel/sched_energy_aware     1
     w /proc/sys/kernel/sched_boost            0
+    w /dev/stune/top-app/schedtune.boost 80
+    w /dev/stune/top-app/schedtune.prefer_high_cap 1
     w "$P0/schedutil/up_rate_limit_us"    500
-    w "$P0/schedutil/down_rate_limit_us"  20000
+    w "$P0/schedutil/down_rate_limit_us"  10000
     w "$P6/schedutil/up_rate_limit_us"    500
-    w "$P6/schedutil/down_rate_limit_us"  20000
+    w "$P6/schedutil/down_rate_limit_us"  10000
     w "$P0/schedutil/hispeed_load"        80
     w "$P0/schedutil/hispeed_freq"        1516800
     w "$P6/schedutil/hispeed_load"        80
     w "$P6/schedutil/hispeed_freq"        1804800
     w "$P0/schedutil/pl"                  0
     w "$P6/schedutil/pl"                  0
-    dbg "Sched: EAS=1 uclamp top=0-80 up_rate=500 down=20000 hispeed=80"
+    dbg "Sched: boost=80 prefer_high_cap=1 EAS=1 uclamp top=0-80 up_rate=500 down=20000 hispeed=80"
 }
 
 # ── IO ──────────────────────────────────────────────────────────────────────
@@ -250,7 +254,7 @@ io_gaming() {
     for blk in /sys/block/sd* /sys/block/mmcblk* /sys/block/dm-*; do
         [ -d "$blk/queue" ] || continue
         w "$blk/queue/scheduler"     deadline
-        w "$blk/queue/read_ahead_kb" 128
+        w "$blk/queue/read_ahead_kb" 256
         w "$blk/queue/nr_requests"   64
         w "$blk/queue/iostats"       0
         w "$blk/queue/add_random"    0
@@ -368,6 +372,12 @@ net_qos_apply() {
     dbg "QoS HTB on $iface"
 }
 
+# ── WiFi Boost ────────────────────────────────────────────────
+net_wifi_boost() {
+    w /proc/sys/net/ipv4/tcp_congestion_control bbr
+    dbg "WiFi Boost: TCP bbr"
+}
+
 # ── Thread Pinning ──────────────────────────────────────────────────────────
 tune_gaming() {
     local pkg="${1:-$CODM_PKG}"
@@ -424,30 +434,22 @@ thermal_disable() {
 
 # ── GPU Adaptive ─────────────────────────────────────────────────────────────
 gpu_adaptive() {
-    local busy max_freq tpl
+    local busy tpl temp
     busy=$(cat /sys/class/kgsl/kgsl-3d0/gpu_busy_percentage 2>/dev/null || echo 0)
     busy=${busy%\%}
-    case "$busy" in ''|*[!0-9]*) busy=0 ;; esac
+    case "$busy" in ""|*[!0-9]*) busy=0 ;; esac
 
-    # Watchdog: thermal_pwrlevel > 4 (267 MHz) unter Last -> zurücksetzen
     tpl=$(cat /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 2>/dev/null || echo 0)
-    if [ "$tpl" -gt 4 ] && [ "$busy" -gt 30 ] 2>/dev/null; then
+    temp=$(thermal_cpu_temp)
+
+    # Watchdog: tpwr>4 ODER (temp>80 && busy>50) -> reset
+    if [ "$tpl" -gt 4 ] 2>/dev/null; then
         w /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 0
-        w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq 650000000
+        w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq "$GPU_MAX_FREQ"
         dbg "GPU TPWR reset: ${tpl}->0 (busy=${busy}%)"
+    elif [ "$temp" -gt 80 ] && [ "$busy" -gt 50 ] 2>/dev/null; then
+        w /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 2
+        w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq "565000000"
+        dbg "GPU temp cap: ${temp}C busy=${busy}% -> 565MHz"
     fi
-
-    # Adaptive: idle 355 MHz, gaming 650 MHz (kein 800 Boost)
-    if [ "$busy" -lt 30 ] 2>/dev/null; then
-        max_freq=355000000
-    else
-        max_freq=650000000
-    fi
-
-    local min_freq=$(cat $GPU/devfreq/min_freq 2>/dev/null || echo 0)
-    [ "$max_freq" -lt "$min_freq" ] 2>/dev/null && max_freq=$min_freq
-    local cur
-    cur=$(cat /sys/class/kgsl/kgsl-3d0/devfreq/max_freq 2>/dev/null || echo 0)
-    [ "$cur" != "$max_freq" ] && w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq "$max_freq"
-    dbg "GPU adaptive: busy=${busy}% tpwr=${tpl} max=${max_freq}Hz"
 }

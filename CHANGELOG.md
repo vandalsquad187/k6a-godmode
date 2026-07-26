@@ -1,5 +1,33 @@
 # Changelog – k6a-godmode
 
+## v2.5.4 – SchedTune Boost + GPU force_no_nap
+
+### SchedTune Boost (80)
+- `schedtune.boost=80`: Top-App-Tasks bevorzugt auf Gold-Kernen
+- `schedtune.prefer_high_cap=1`: Scheduler wählt schnellere (energiehungrige) Kerne
+- Messbar höhere FPS in GPU-bound Szenarien (CODM Kampf)
+
+### GPU force_no_nap=1
+- GPU bleibt zwischen Frames aktiv, kein Nap-Idle
+- Reduziert Latenz-Spitzen bei Lastwechseln
+
+### GPU throttling=0
+- Kernel-seitige GPU-Thermaldrosselung deaktiviert
+- GPU hält volle Leistung bis zum _THP-Cooldown (default 78°C)
+
+### mkdir-Lock (flock-Ersatz)
+- `flock` via shell-Redirection (`} 9>...`) hielt Lock nicht über Funktionsgrenzen
+- `mkdir` atomar + PID-basierte Stale-Erkennung
+- SIGKILL-sicher: Lock stirbt mit Prozess (trap EXIT räumt auf)
+
+### Bugfixes
+- `_startup()` wurde definiert aber nie aufgerufen → fehlender Lock-Check
+- `gpu_busy_percentage` enthielt Prozentzeichen → `0%%` in WebUI
+- sed auf toybox scheiterte an `/`-Delimiter mit `.`-Wildcard
+- `setTimeout(refreshData,500)` lag global → wurde nur einmal beim Seitenladen ausgeführt
+
+---
+
 ## v2.5.3 – GPU-Clamp + Polling-Interval
 
 ### GPU-Adaptive Safety-Clamp

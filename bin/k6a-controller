@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# k6a-controller  v2.5 — Thermal-Tamed | GPU adaptive 650 MHz | _THP 78C
+# k6a-controller  v2.5.2 — Lock mkdir | SchedTune=80 | GPU force_no_nap | WiFi Boost
 
 MODDIR="${1:-/data/adb/modules/k6a_tune}"
 CONFIG="$MODDIR/config/settings.conf"
@@ -13,16 +13,24 @@ LOG_FILE="$LOG"
 
 . "$MODDIR/bin/k6a-lib.sh"
 
-STATE="OFF"; TICK=0; _GOD=0; _THP=1; _TSTATE="active"
+STATE="OFF"; TICK=0; _GOD=0; _THP=1; _TSTATE="active"; _WIFI_OLD=-1
 LAST_LOG_TS=0; LOG_INTERVAL=30
 
 cfg() { grep "^${1}=" "$CONFIG" 2>/dev/null | cut -d= -f2; }
+set_cfg() {
+    local key="$1" val="$2"
+    if grep -q "^${key}=" "$CONFIG" 2>/dev/null; then
+        sed -i "s|^${key}=.*|${key}=${val}|" "$CONFIG"
+    else
+        echo "${key}=${val}" >> "$CONFIG"
+    fi
+}
 
 _cfg_load() {
     DEBUG=$(cfg debug); [ "$DEBUG" != "1" ] && DEBUG=0; CFG_DEBUG=$DEBUG
     CFG_THRESH=$(cfg thermal_cooking_thresh); CFG_THRESH=${CFG_THRESH:-78}
     [ "$CFG_THRESH" -lt 70 ] && CFG_THRESH=70; [ "$CFG_THRESH" -gt 95 ] && CFG_THRESH=95
-    for _v in god_gpu god_sched god_io god_vm god_irq god_net god_props; do
+    for _v in god_gpu god_sched god_io god_vm god_irq god_net god_props wifi_boost; do
         _upper=$(echo "$_v" | tr '[:lower:]' '[:upper:]')
         eval "CFG_${_upper}"=\"$(cfg "$_v")\"
         eval "[ \"\$CFG_${_upper}\" != \"0\" ] && CFG_${_upper}=1 || CFG_${_upper}=0"
@@ -52,6 +60,7 @@ _god_on() {
     [ "$CFG_GOD_VM" = "1" ]    && vm_gaming
     [ "$CFG_GOD_IRQ" = "1" ]   && apply_irq_affinity
     [ "$CFG_GOD_NET" = "1" ]   && net_gaming
+    [ "$CFG_WIFI_BOOST" = "1" ] && net_wifi_boost
     [ "$CFG_GOD_PROPS" = "1" ] && props_gaming
     lru_gen_enable
     wakelock_block
@@ -64,6 +73,7 @@ _god_on() {
     [ "$CFG_GOD_VM" = "1" ]    && active="${active}vm "
     [ "$CFG_GOD_IRQ" = "1" ]   && active="${active}irq "
     [ "$CFG_GOD_NET" = "1" ]   && active="${active}net "
+    [ "$CFG_WIFI_BOOST" = "1" ] && active="${active}wifi "
     [ "$CFG_GOD_PROPS" = "1" ] && active="${active}props "
     log "mode: $(r "$GOD_FILE") | active: ${active}"
 }
@@ -92,7 +102,7 @@ _write_data() {
     cpu_s=$(( $(r "$P0/scaling_cur_freq") / 1000 ))
     cpu_g=$(( $(r "$P6/scaling_cur_freq") / 1000 ))
     gpu_mhz=$(( $(r "$GPU/devfreq/cur_freq") / 1000000 ))
-    gpu_busy=$(r "$GPU/gpu_busy_percentage")
+    gpu_busy=$(r "$GPU/gpu_busy_percentage" | grep -o '[0-9.]*' | head -1)
     bpc=$(r /sys/class/power_supply/battery/capacity)
     btp=$(r /sys/class/power_supply/battery/temp)
     btpc="$(( btp / 10 )).$(( btp % 10 ))"
@@ -119,6 +129,7 @@ _write_data() {
     printf 'god_irq=%s\n' "$CFG_GOD_IRQ" >> "$DATA"
     printf 'god_net=%s\n' "$CFG_GOD_NET" >> "$DATA"
     printf 'god_props=%s\n' "$CFG_GOD_PROPS" >> "$DATA"
+    printf 'wifi_boost=%s\n' "$CFG_WIFI_BOOST" >> "$DATA"
     printf 'temp=%s\n' "${temp}" >> "$DATA"
     printf 'cpu_sil_mhz=%s\n' "${cpu_s}" >> "$DATA"
     printf 'cpu_gold_mhz=%s\n' "${cpu_g}" >> "$DATA"
@@ -133,7 +144,6 @@ _write_data() {
     printf 'ram_total=%s\n' "${ram_total}" >> "$DATA"
     printf 'tick=%s\n' "${TICK}" >> "$DATA"
     printf 'features=hotplug=%s lru=%s boeffla=%s uclamp=%s thermal_w=%s\n' "${FEATURE_HOTPLUG}" "${FEATURE_LRU_GEN}" "${FEATURE_BOEFFLA}" "${FEATURE_UCLAMP}" "${FEATURE_THERMAL_WRITABLE}" >> "$DATA"
-    printf 'thermal_state=%s\n' "$_TSTATE" >> "$DATA"
     printf 'gov_sil=%s\n' "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)" >> "$DATA"
     printf 'gov_gold=%s\n' "$(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_governor 2>/dev/null)" >> "$DATA"
     printf 'gov_gpu=%s\n' "$(cat /sys/class/kgsl/kgsl-3d0/devfreq/governor 2>/dev/null)" >> "$DATA"
@@ -142,32 +152,29 @@ _write_data() {
     tail -30 "$LOG" > "$LOG_WEB" 2>/dev/null || true
 }
 
+LOCKDIR="$MODDIR/run/lock"
+
 _startup() {
-    if [ -f "$LOCK" ]; then
-        local op; op=$(r "$LOCK")
-        if [ -n "$op" ] && kill -0 "$op" 2>/dev/null; then
-            local cname
-            cname=$(cat /proc/$op/comm 2>/dev/null)
-            case "$cname" in
-                k6a-controller|sh) ;;
-                *) cname="" ;;
-            esac
-            if [ -n "$cname" ]; then
-                err "Controller already running (PID $op)"; exit 1
-            fi
-            warn "Stale lock (PID $op is $cname), removing"
+    if ! mkdir "$LOCKDIR" 2>/dev/null; then
+        if [ -f "$LOCKDIR/pid" ] && kill -0 $(cat "$LOCKDIR/pid" 2>/dev/null) 2>/dev/null; then
+            err "Controller already running (PID $(cat $LOCKDIR/pid))"
+            exit 1
         fi
-        rm -f "$LOCK"
+        err "Stale lock, removing"
+        rmdir "$LOCKDIR" 2>/dev/null || rm -rf "$LOCKDIR"
+        mkdir "$LOCKDIR" || exit 1
     fi
-    echo $$ > "$LOCK"
+    echo $$ > "$LOCKDIR/pid"
     _cfg_load; _cache_thermal_zones
     detect_kernel_features
+    thermal_trips_restore
     printf 'pid=%s\nstate=OFF\ngod_mode=0\n' "$$" > "$DATA" 2>/dev/null || true
-    log "k6a-godmode v2.5 — Thermal-Tamed | SM7150 sweet"
+    log "k6a-godmode v2.5.2 - Lock mkdir | SchedTune=80 | GPU force_no_nap | WiFi Boost"
 }
-_startup
 
-trap 'log "Controller stopped"; thermal_trips_restore; rm -f "$LOCK"' EXIT TERM INT
+trap 'log "Controller stopped"; thermal_trips_restore; rmdir "$LOCKDIR" 2>/dev/null' EXIT TERM INT
+
+_startup
 
 while true; do
     _god=$(r "$GOD_FILE")
@@ -190,8 +197,8 @@ while true; do
             fi
             [ $(( TICK % 10 )) -eq 0 ] && {
                 _TSTATE="active"
-                for _if in $(ip link show up 2>/dev/null | grep -o "wlan[0-9]*"); do iw dev "$_if" set power_save off 2>/dev/null || true; done
-                fstrim /data 2>/dev/null || true
+                for _if in $(ip link show up 2>/dev/null | grep -o "wlan[0-9]*"); do timeout 3 iw dev "$_if" set power_save off 2>/dev/null || true; done
+                timeout 5 fstrim /data 2>/dev/null || true
             }
         fi
     else
@@ -201,5 +208,17 @@ while true; do
     TICK=$(( TICK + 1 ))
     [ $(( TICK % 3 )) -eq 0 ] && _write_data
     [ $(( TICK % 100 )) -eq 0 ] && _trim_log
+    _WIFI=$(cfg wifi_boost)
+    [ "$_WIFI" != "0" ] && _WIFI=1 || _WIFI=0
+    if [ "$_WIFI" != "$_WIFI_OLD" ] 2>/dev/null; then
+        if [ "$_WIFI" = "1" ]; then
+            echo bbr > /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null || true
+            log "WiFi Boost: ON (bbr)"
+        else
+            echo cubic > /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null || true
+            log "WiFi Boost: OFF (cubic)"
+        fi
+        _WIFI_OLD=$_WIFI
+    fi
     sleep 1
 done
