@@ -1,4 +1,4 @@
-# k6a-godmode v2.5.4
+# k6a-godmode v2.5.5
 
 GPU-adaptives God-Mode für **SM7150 (sweet/sweet2)** mit **v4.2.6 Kernel** – entwickelt und optimiert für CODM Battle Royale.
 
@@ -21,12 +21,9 @@ Ohne diese Kernel-Patches arbeitet das Modul ineffizient (CPU FREEZE, Yo-Yo).
 - unter 30% Last: 355 MHz (Idle, Looten)
 - 30-65% Last: 650 MHz (normales Gaming)
 - ueber 65% Last: 800 MHz (Kampf, Boost)
-- **force_no_nap=1**: GPU bleibt zwischen Frames aktiv → weniger Latenz
 
 ### CPU & Scheduler
 - Cooling-Floor im Kernel (nie unter 1,5 GHz beim Gaming)
-- **SchedTune Boost 80**: Top-App bevorzugt auf Gold-Kernen
-- **prefer_high_cap=1**: Scheduler wählt schnellere Kerne
 - schedutil up_rate_limit_us = 500 (schnelles Hochtakten)
 - schedutil down_rate_limit_us = 20000 (Frequenz halten)
 - taskset auf Gold-Kerne (RenderThread, GLThread, UnityMain)

@@ -151,17 +151,23 @@ _write_data() {
     printf 'cpu_gold_max=%s\n' "$(($(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_max_freq 2>/dev/null) / 1000))" >> "$DATA"
     tail -30 "$LOG" > "$LOG_WEB" 2>/dev/null || true
 }
-
 LOCKDIR="$MODDIR/run/lock"
 
 _startup() {
     if ! mkdir "$LOCKDIR" 2>/dev/null; then
-        if [ -f "$LOCKDIR/pid" ] && kill -0 $(cat "$LOCKDIR/pid" 2>/dev/null) 2>/dev/null; then
-            err "Controller already running (PID $(cat $LOCKDIR/pid))"
-            exit 1
+        if [ -f "$LOCKDIR/pid" ]; then
+            _old_pid=$(cat "$LOCKDIR/pid" 2>/dev/null)
+            if [ -n "$_old_pid" ] && kill -0 "$_old_pid" 2>/dev/null; then
+                if grep -q "k6a-controller" /proc/"$_old_pid"/cmdline 2>/dev/null; then
+                    err "Controller already running (PID $_old_pid)"
+                    exit 1
+                fi
+                err "Stale lock: PID $_old_pid belongs to $(tr '\0' ' ' < /proc/$_old_pid/cmdline 2>/dev/null), removing"
+            else
+                err "Stale lock: PID $_old_pid is dead, removing"
+            fi
         fi
-        err "Stale lock, removing"
-        rmdir "$LOCKDIR" 2>/dev/null || rm -rf "$LOCKDIR"
+        rm -rf "$LOCKDIR"
         mkdir "$LOCKDIR" || exit 1
     fi
     echo $$ > "$LOCKDIR/pid"
@@ -172,10 +178,9 @@ _startup() {
     log "k6a-godmode v2.5.2 - Lock mkdir | SchedTune=80 | GPU force_no_nap | WiFi Boost"
 }
 
-trap 'log "Controller stopped"; thermal_trips_restore; rmdir "$LOCKDIR" 2>/dev/null' EXIT TERM INT
+trap 'log "Controller stopped"; thermal_trips_restore; rm -rf "$LOCKDIR"' EXIT TERM INT
 
 _startup
-
 while true; do
     _god=$(r "$GOD_FILE")
     _thp=$(r "$THP_FILE")

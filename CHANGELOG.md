@@ -1,34 +1,20 @@
 # Changelog – k6a-godmode
 
-## v2.5.4 – SchedTune Boost + GPU force_no_nap
+## v2.5.5 – Stale-Lock-Fix (PID-Recycling)
 
-### SchedTune Boost (80)
-- `schedtune.boost=80`: Top-App-Tasks bevorzugt auf Gold-Kernen
-- `schedtune.prefer_high_cap=1`: Scheduler wählt schnellere (energiehungrige) Kerne
-- Messbar höhere FPS in GPU-bound Szenarien (CODM Kampf)
+### Problem
+Nach Kernel-Update / Reboot blieb der Controller tot:
+- Lock-Datei mit alter PID `3298` blieb erhalten
+- `kill -0 3298` traf zu (PID wurde von Android an anderen Prozess vergeben)
+- Controller dachte "läuft schon" → `exit 1`
+- `rmdir` im trap schlug fehl (pid-File noch im Dir) → Lock blieb ewig
 
-### GPU force_no_nap=1
-- GPU bleibt zwischen Frames aktiv, kein Nap-Idle
-- Reduziert Latenz-Spitzen bei Lastwechseln
+### Fix
+- **`_startup()`**: Verifiziert via `grep -q "k6a-controller" /proc/$pid/cmdline` ob der Prozess wirklich unser Controller ist
+- **Stale-Lock-Meldung**: Zeigt an, welchem Prozess der PID gehört
+- **trap**: `rm -rf "$LOCKDIR"` statt `rmdir` (löscht auch nicht-leere Dirs)
 
-### GPU throttling=0
-- Kernel-seitige GPU-Thermaldrosselung deaktiviert
-- GPU hält volle Leistung bis zum _THP-Cooldown (default 78°C)
-
-### mkdir-Lock (flock-Ersatz)
-- `flock` via shell-Redirection (`} 9>...`) hielt Lock nicht über Funktionsgrenzen
-- `mkdir` atomar + PID-basierte Stale-Erkennung
-- SIGKILL-sicher: Lock stirbt mit Prozess (trap EXIT räumt auf)
-
-### Bugfixes
-- `_startup()` wurde definiert aber nie aufgerufen → fehlender Lock-Check
-- `gpu_busy_percentage` enthielt Prozentzeichen → `0%%` in WebUI
-- sed auf toybox scheiterte an `/`-Delimiter mit `.`-Wildcard
-- `setTimeout(refreshData,500)` lag global → wurde nur einmal beim Seitenladen ausgeführt
-
----
-
-## v2.5.3 – GPU-Clamp + Polling-Interval
+### v2.5.4 – SchedTune Boost + GPU force_no_nap
 
 ### GPU-Adaptive Safety-Clamp
 - `gpu_adaptive()`: max_freq wird nie unter devfreq/min_freq gesetzt
