@@ -166,7 +166,7 @@ body{background:#0a0e17;color:#c8d6e5;font-family:system-ui,-apple-system,sans-s
 
 <div class="card">
 <h2>Info</h2>
-<div class="row"><span class="label">Modul</span><span class="val">k6a-godmode 2.2</span></div>
+<div class="row"><span class="label">Modul</span><span class="val">k6a-godmode 2.6</span></div>
 <div class="row"><span class="label">Gerät</span><span class="val">SM7150 (sweet/sweet2)</span></div>
 <div class="row"><span class="label">Kernel</span><span class="val" id="k_r"></span></div>
 <div class="row"><span class="label">Build</span><span class="val" id="k_" style="font-size:11px;word-break:break-all"></span></div>
@@ -227,7 +227,7 @@ function debugDump(){document.getElementById("logBox").textContent=JSON.stringif
 function updateUI(){
 document.getElementById('st').textContent=d.state||'OFF';
 document.getElementById('tp').textContent=(d.temp||'--')+'°C';
-var _ts=document.getElementById('ts');if(_ts){var tsMap={hold:'<span style="color:#ff6b6b">⚠️ hold</span>',active:'<span style="color:#4ade80">active ✅</span>',cooldown:'<span style="color:#c97d1a">🔸 cooldown</span>',off:'<span style="color:#6b7f9a">○ off</span>'};_ts.innerHTML=tsMap[d.thermal_state]||'--'}
+var _ts=document.getElementById('ts');if(_ts){var tsMap={hold:'<span style="color:#ff6b6b">⚠️ hold</span>',active:'<span style="color:#4ade80">active ✅</span>',cooldown:'<span style="color:#c97d1a">🔸 cooldown</span>',cooldown_l2:'<span style="color:#c97d1a">🌡️ L2 76°C</span>',cooldown_l3:'<span style="color:#ff7700">🌡️ L3 80°C</span>',cooldown_l4:'<span style="color:#ff6b6b">🌡️ L4 85°C</span>',off:'<span style="color:#6b7f9a">○ off</span>'};_ts.innerHTML=tsMap[d.thermal_state]||'--'}
 document.getElementById('cs').textContent=(d.cpu_sil_mhz||'--')+' MHz';
 document.getElementById('cg').textContent=(d.cpu_gold_mhz||'--')+' MHz';
 document.getElementById('gm').textContent=(d.gpu_mhz||'--')+' MHz';

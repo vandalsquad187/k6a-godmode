@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# k6a-lib.sh  v2.5 — THERMAL-TAMED (data-driven)
+# k6a-lib.sh  v2.6 — GPU cooldown parametrisiert | GPU adaptive 3-stufig
 # SM7150 | GPU adaptive 355/650 MHz | Threshold 78C _THP | min 355 MHz
 
 unalias r 2>/dev/null || true
@@ -118,17 +118,17 @@ gpu_gaming() {
 }
 
 gpu_cooldown() {
-    local level="$1"
+    local level="$1" max_freq="$2"
     w $GPU/thermal_pwrlevel "$level"
     case "$level" in
-        4) w $GPU/devfreq/max_freq "355000000"; w $GPU/devfreq/min_freq "355000000" ;;
-        3) w $GPU/devfreq/max_freq "430000000"; w $GPU/devfreq/min_freq "430000000" ;;
-        2) w $GPU/devfreq/max_freq "565000000"; w $GPU/devfreq/min_freq "430000000" ;;
+        4) w $GPU/devfreq/max_freq "${max_freq:-355000000}"; w $GPU/devfreq/min_freq "${max_freq:-355000000}" ;;
+        3) w $GPU/devfreq/max_freq "${max_freq:-430000000}"; w $GPU/devfreq/min_freq "${max_freq:-430000000}" ;;
+        2) w $GPU/devfreq/max_freq "${max_freq:-565000000}"; w $GPU/devfreq/min_freq "430000000" ;;
         *) w $GPU/devfreq/max_freq "$GPU_MAX_FREQ"; w $GPU/devfreq/min_freq "355000000" ;;
     esac
     w $GPU/force_clk_on 1; w $GPU/force_bus_on 1
     printf '%s' 1 > "$GPU/throttling" 2>/dev/null || true
-    dbg "GPU cooldown level=$level"
+    dbg "GPU cooldown level=$level max_freq=${max_freq}"
 }
 
 # ── CPU Hotplug ─────────────────────────────────────────────────────────────
@@ -442,14 +442,33 @@ gpu_adaptive() {
     tpl=$(cat /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 2>/dev/null || echo 0)
     temp=$(thermal_cpu_temp)
 
-    # Watchdog: tpwr>4 ODER (temp>80 && busy>50) -> reset
+    # Stufe 1: Hohe Last + moderate Temp -> stabil halten
+    if [ "$busy" -gt 70 ] && [ "$temp" -lt 75 ] 2>/dev/null; then
+        if [ "$tpl" -gt 0 ] 2>/dev/null; then
+            w /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 0
+            w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq "$GPU_MAX_FREQ"
+            dbg "GPU adaptive: busy=${busy}% temp=${temp}C tpwr=${tpl}->0 (high load, cool)"
+        fi
+        return
+    fi
+
+    # Stufe 2: Hohe Last + hohe Temp -> begrenzen
+    if [ "$busy" -gt 50 ] && [ "$temp" -gt 80 ] 2>/dev/null; then
+        local target_pwr=2
+        local target_freq=565000000
+        [ "$temp" -gt 85 ] && { target_pwr=3; target_freq=430000000; }
+        if [ "$tpl" -ne "$target_pwr" ] 2>/dev/null; then
+            w /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel "$target_pwr"
+            w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq "$target_freq"
+            dbg "GPU adaptive: busy=${busy}% temp=${temp}C tpwr=${target_pwr} ${target_freq}Hz"
+        fi
+        return
+    fi
+
+    # Stufe 3: Geringe Last -> Watchdog
     if [ "$tpl" -gt 4 ] 2>/dev/null; then
         w /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 0
         w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq "$GPU_MAX_FREQ"
-        dbg "GPU TPWR reset: ${tpl}->0 (busy=${busy}%)"
-    elif [ "$temp" -gt 80 ] && [ "$busy" -gt 50 ] 2>/dev/null; then
-        w /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 2
-        w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq "565000000"
-        dbg "GPU temp cap: ${temp}C busy=${busy}% -> 565MHz"
+        dbg "GPU watchdog: tpwr ${tpl}->0"
     fi
 }

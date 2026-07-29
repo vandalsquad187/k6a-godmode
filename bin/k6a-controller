@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# k6a-controller  v2.5.2 — Lock mkdir | SchedTune=80 | GPU force_no_nap | WiFi Boost
+# k6a-controller  v2.6 — _TSTATE dynamisch | Cooldown konfigurierbar
 
 MODDIR="${1:-/data/adb/modules/k6a_tune}"
 CONFIG="$MODDIR/config/settings.conf"
@@ -35,6 +35,15 @@ _cfg_load() {
         eval "CFG_${_upper}"=\"$(cfg "$_v")\"
         eval "[ \"\$CFG_${_upper}\" != \"0\" ] && CFG_${_upper}=1 || CFG_${_upper}=0"
     done
+    for _cd in l2_temp l3_temp l4_temp recover_temp \
+               l2_gold_max l3_gold_max l4_gold_max \
+               l2_gpu_max l3_gpu_max l4_gpu_max; do
+        _upper=$(echo "$_cd" | tr '[:lower:]' '[:upper:]')
+        eval "CD_${_upper}"=\"$(cfg "cooldown_${_cd}")\"
+    done
+    : "${CD_L2_TEMP:=76}"    "${CD_L3_TEMP:=80}"    "${CD_L4_TEMP:=85}"    "${CD_RECOVER_TEMP:=72}"
+    : "${CD_L2_GOLD_MAX:=1600000}" "${CD_L3_GOLD_MAX:=1400000}" "${CD_L4_GOLD_MAX:=1200000}"
+    : "${CD_L2_GPU_MAX:=565000000}"   "${CD_L3_GPU_MAX:=430000000}"   "${CD_L4_GPU_MAX:=355000000}"
 }
 
 _ratelog() {
@@ -50,6 +59,7 @@ _trim_log() {
 
 _god_on() {
     log "-> GOD-MODE ON"; _cfg_load
+    _TSTATE="active"
     cpu_hotplug_online_all
     [ "$_THP" = "1" ] && lmh_disable
     [ "$_THP" = "1" ] && thermal_disable
@@ -80,18 +90,25 @@ _god_on() {
 
 _do_cooldown() {
     local temp=$1
-    if [ "$temp" -ge 85 ] 2>/dev/null; then
-        gpu_cooldown 4; w "$P6/scaling_max_freq" 1200000
-        _ratelog "Cooldown L4: ${temp}C"
-    elif [ "$temp" -ge 80 ] 2>/dev/null; then
-        gpu_cooldown 3; w "$P6/scaling_max_freq" 1400000
-        _ratelog "Cooldown L3: ${temp}C"
-    elif [ "$temp" -ge 76 ] 2>/dev/null; then
-        gpu_cooldown 2; w "$P6/scaling_max_freq" 1600000
-        _ratelog "Cooldown L2: ${temp}C"
-    elif [ "$temp" -le 72 ] 2>/dev/null; then
+    if [ "$temp" -ge "${CD_L4_TEMP:-85}" ] 2>/dev/null; then
+        gpu_cooldown 4 "${CD_L4_GPU_MAX:-355000000}"
+        w "$P6/scaling_max_freq" "${CD_L4_GOLD_MAX:-1200000}"
+        _TSTATE="cooldown_l4"
+        _ratelog "Cooldown L4 ($temp>=${CD_L4_TEMP}C): GPU ${CD_L4_GPU_MAX} Gold ${CD_L4_GOLD_MAX}kHz"
+    elif [ "$temp" -ge "${CD_L3_TEMP:-80}" ] 2>/dev/null; then
+        gpu_cooldown 3 "${CD_L3_GPU_MAX:-430000000}"
+        w "$P6/scaling_max_freq" "${CD_L3_GOLD_MAX:-1400000}"
+        _TSTATE="cooldown_l3"
+        _ratelog "Cooldown L3 ($temp>=${CD_L3_TEMP}C): GPU ${CD_L3_GPU_MAX} Gold ${CD_L3_GOLD_MAX}kHz"
+    elif [ "$temp" -ge "${CD_L2_TEMP:-76}" ] 2>/dev/null; then
+        gpu_cooldown 2 "${CD_L2_GPU_MAX:-565000000}"
+        w "$P6/scaling_max_freq" "${CD_L2_GOLD_MAX:-1600000}"
+        _TSTATE="cooldown_l2"
+        _ratelog "Cooldown L2 ($temp>=${CD_L2_TEMP}C): GPU ${CD_L2_GPU_MAX} Gold ${CD_L2_GOLD_MAX}kHz"
+    elif [ "$temp" -le "${CD_RECOVER_TEMP:-72}" ] 2>/dev/null; then
         gpu_gaming
         w "$P6/scaling_max_freq" 1804800
+        _TSTATE="active"
         _ratelog "Cooldown off: ${temp}C"
     fi
 }
@@ -175,7 +192,7 @@ _startup() {
     detect_kernel_features
     thermal_trips_restore
     printf 'pid=%s\nstate=OFF\ngod_mode=0\n' "$$" > "$DATA" 2>/dev/null || true
-    log "k6a-godmode v2.5.2 - Lock mkdir | SchedTune=80 | GPU force_no_nap | WiFi Boost"
+    log "k6a-godmode v2.6 - _TSTATE dynamic | Cooldown configurable"
 }
 
 trap 'log "Controller stopped"; thermal_trips_restore; rm -rf "$LOCKDIR"' EXIT TERM INT
@@ -201,7 +218,6 @@ while true; do
                 [ "$_temp" -ge "$CFG_THRESH" ] 2>/dev/null && _do_cooldown "$_temp"
             fi
             [ $(( TICK % 10 )) -eq 0 ] && {
-                _TSTATE="active"
                 for _if in $(ip link show up 2>/dev/null | grep -o "wlan[0-9]*"); do timeout 3 iw dev "$_if" set power_save off 2>/dev/null || true; done
                 timeout 5 fstrim /data 2>/dev/null || true
             }
