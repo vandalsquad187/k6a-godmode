@@ -1,7 +1,7 @@
 id=k6a_tune
 name=k6a-godmode
-version=v2.7
-versionCode=12
-description=k6a-godmode v2.7 — Watchdog-Restart | Atomic Write | GPU-Adaptive Cooldown-Respekt | Thermal-Status Home-Tab
+version=v2.8
+versionCode=13
+description=k6a-godmode v2.8 — Unified Governor | Cooldown-Hysterese | Thresholds-UI | Notification
 icon=icon1.png
 banner=icon1.png

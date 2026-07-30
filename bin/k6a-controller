@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# k6a-controller  v2.7 — _TSTATE dynamisch | Cooldown konfigurierbar
+# k6a-controller  v2.8 — Unified Governor | Hysterese | Thresholds-UI
 
 MODDIR="${1:-/data/adb/modules/k6a_tune}"
 CONFIG="$MODDIR/config/settings.conf"
@@ -15,7 +15,7 @@ LOG_FILE="$LOG"
 
 . "$MODDIR/bin/k6a-lib.sh"
 
-STATE="OFF"; TICK=0; _GOD=0; _THP=1; _TSTATE="active"; _WIFI_OLD=-1
+STATE="OFF"; TICK=0; _GOD=0; _THP=1; _TSTATE="active"; _TSTATE_TS=0; _WIFI_OLD=-1
 LAST_LOG_TS=0; LOG_INTERVAL=30
 
 cfg() { grep "^${1}=" "$CONFIG" 2>/dev/null | cut -d= -f2; }
@@ -61,8 +61,7 @@ _trim_log() {
 
 _god_on() {
     log "-> GOD-MODE ON"; _cfg_load
-    _TSTATE="active"
-    echo "$_TSTATE" > "$THERMAL_STATE_FILE" 2>/dev/null || true
+    _set_state active
     cpu_hotplug_online_all
     [ "$_THP" = "1" ] && lmh_disable
     [ "$_THP" = "1" ] && thermal_disable
@@ -91,32 +90,62 @@ _god_on() {
     log "mode: $(r "$GOD_FILE") | active: ${active}"
 }
 
+_set_state() {
+    _TSTATE=$1; _TSTATE_TS=$(date +%s)
+    echo "$_TSTATE" > "$THERMAL_STATE_FILE" 2>/dev/null || true
+    local _sn
+    _sn=${_TSTATE#cooldown_}
+    case "$_TSTATE" in
+        cooldown_l3|cooldown_l4)
+            cmd notification post -t "k6a-godmode" \
+                -m "🌡️ Cooldown ${_sn} aktiv" \
+                --ongoing --category alarm k6a_thermal 2>/dev/null || true ;;
+        active|cooldown_l2|off)
+            cmd notification cancel k6a_thermal 2>/dev/null || true ;;
+    esac
+}
+
 _do_cooldown() {
-    local temp=$1
+    local temp=$1 now=$(date +%s) busy tpl
+    case "$_TSTATE" in
+        cooldown_l4)
+            gpu_cooldown 4 "${CD_L4_GPU_MAX:-355000000}"
+            w "$P6/scaling_max_freq" "${CD_L4_GOLD_MAX:-1200000}"
+            [ "$temp" -lt "${CD_L3_TEMP:-80}" ] 2>/dev/null && \
+                [ $(( now - _TSTATE_TS )) -ge 10 ] && _set_state cooldown_l3
+            return
+            ;;
+        cooldown_l3)
+            gpu_cooldown 3 "${CD_L3_GPU_MAX:-430000000}"
+            w "$P6/scaling_max_freq" "${CD_L3_GOLD_MAX:-1400000}"
+            [ "$temp" -lt "${CD_L2_TEMP:-76}" ] 2>/dev/null && \
+                [ $(( now - _TSTATE_TS )) -ge 10 ] && _set_state cooldown_l2
+            return
+            ;;
+        cooldown_l2)
+            gpu_cooldown 2 "${CD_L2_GPU_MAX:-565000000}"
+            w "$P6/scaling_max_freq" "${CD_L2_GOLD_MAX:-1600000}"
+            [ "$temp" -le "${CD_RECOVER_TEMP:-72}" ] 2>/dev/null && \
+                [ $(( now - _TSTATE_TS )) -ge 10 ] && _set_state active
+            return
+            ;;
+    esac
+    # _TSTATE == "active"
     if [ "$temp" -ge "${CD_L4_TEMP:-85}" ] 2>/dev/null; then
-        gpu_cooldown 4 "${CD_L4_GPU_MAX:-355000000}"
-        w "$P6/scaling_max_freq" "${CD_L4_GOLD_MAX:-1200000}"
-        _TSTATE="cooldown_l4"
-        echo "$_TSTATE" > "$THERMAL_STATE_FILE" 2>/dev/null || true
-        _ratelog "Cooldown L4 ($temp>=${CD_L4_TEMP}C): GPU ${CD_L4_GPU_MAX} Gold ${CD_L4_GOLD_MAX}kHz"
+        _set_state cooldown_l4
     elif [ "$temp" -ge "${CD_L3_TEMP:-80}" ] 2>/dev/null; then
-        gpu_cooldown 3 "${CD_L3_GPU_MAX:-430000000}"
-        w "$P6/scaling_max_freq" "${CD_L3_GOLD_MAX:-1400000}"
-        _TSTATE="cooldown_l3"
-        echo "$_TSTATE" > "$THERMAL_STATE_FILE" 2>/dev/null || true
-        _ratelog "Cooldown L3 ($temp>=${CD_L3_TEMP}C): GPU ${CD_L3_GPU_MAX} Gold ${CD_L3_GOLD_MAX}kHz"
+        _set_state cooldown_l3
     elif [ "$temp" -ge "${CD_L2_TEMP:-76}" ] 2>/dev/null; then
-        gpu_cooldown 2 "${CD_L2_GPU_MAX:-565000000}"
-        w "$P6/scaling_max_freq" "${CD_L2_GOLD_MAX:-1600000}"
-        _TSTATE="cooldown_l2"
-        echo "$_TSTATE" > "$THERMAL_STATE_FILE" 2>/dev/null || true
-        _ratelog "Cooldown L2 ($temp>=${CD_L2_TEMP}C): GPU ${CD_L2_GPU_MAX} Gold ${CD_L2_GOLD_MAX}kHz"
-    elif [ "$temp" -le "${CD_RECOVER_TEMP:-72}" ] 2>/dev/null; then
-        gpu_gaming
-        w "$P6/scaling_max_freq" 1804800
-        _TSTATE="active"
-        echo "$_TSTATE" > "$THERMAL_STATE_FILE" 2>/dev/null || true
-        _ratelog "Cooldown off: ${temp}C"
+        _set_state cooldown_l2
+    else
+        busy=$(cat /sys/class/kgsl/kgsl-3d0/gpu_busy_percentage 2>/dev/null || echo 0)
+        busy=${busy%\%}; case "$busy" in ""|*[!0-9]*) busy=0 ;; esac
+        tpl=$(cat /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 2>/dev/null || echo 0)
+        [ "$busy" -gt 70 ] && [ "$temp" -lt 75 ] 2>/dev/null && [ "$tpl" -gt 0 ] 2>/dev/null && {
+            w /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 0
+            w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq "$GPU_MAX_FREQ"
+        }
+        [ "$tpl" -gt 4 ] 2>/dev/null && w /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 0
     fi
 }
 
@@ -174,6 +203,17 @@ _write_data() {
     printf 'gov_gpu=%s\n' "$(cat /sys/class/kgsl/kgsl-3d0/devfreq/governor 2>/dev/null)" >> "$_tmp"
     printf 'cpu_sil_max=%s\n' "$(($(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2>/dev/null) / 1000))" >> "$_tmp"
     printf 'cpu_gold_max=%s\n' "$(($(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_max_freq 2>/dev/null) / 1000))" >> "$_tmp"
+    printf 'cfg_cooking_thresh=%s\n' "${CFG_THRESH:-78}" >> "$_tmp"
+    printf 'cfg_l2_temp=%s\n' "${CD_L2_TEMP:-76}" >> "$_tmp"
+    printf 'cfg_l3_temp=%s\n' "${CD_L3_TEMP:-80}" >> "$_tmp"
+    printf 'cfg_l4_temp=%s\n' "${CD_L4_TEMP:-85}" >> "$_tmp"
+    printf 'cfg_recover_temp=%s\n' "${CD_RECOVER_TEMP:-72}" >> "$_tmp"
+    printf 'cfg_l2_gpu=%s\n' "${CD_L2_GPU_MAX:-565000000}" >> "$_tmp"
+    printf 'cfg_l3_gpu=%s\n' "${CD_L3_GPU_MAX:-430000000}" >> "$_tmp"
+    printf 'cfg_l4_gpu=%s\n' "${CD_L4_GPU_MAX:-355000000}" >> "$_tmp"
+    printf 'cfg_l2_gold=%s\n' "${CD_L2_GOLD_MAX:-1600000}" >> "$_tmp"
+    printf 'cfg_l3_gold=%s\n' "${CD_L3_GOLD_MAX:-1400000}" >> "$_tmp"
+    printf 'cfg_l4_gold=%s\n' "${CD_L4_GOLD_MAX:-1200000}" >> "$_tmp"
     mv "$_tmp" "$DATA"
     tail -30 "$LOG" > "$LOG_WEB" 2>/dev/null || true
 }
@@ -208,9 +248,9 @@ _startup() {
     _cfg_load; _cache_thermal_zones
     detect_kernel_features
     thermal_trips_restore
-    echo "active" > "$THERMAL_STATE_FILE" 2>/dev/null || true
+    _set_state active
     printf 'pid=%s\nstate=OFF\ngod_mode=0\n' "$$" > "$DATA" 2>/dev/null || true
-    log "k6a-godmode v2.7 - _TSTATE dynamic | Cooldown configurable"
+    log "k6a-godmode v2.8 - Unified Governor | Hysterese | Thresholds-UI"
 }
 
 trap 'echo 0 > "$CRASH_FILE" 2>/dev/null; log "Controller stopped"; thermal_trips_restore; rm -rf "$LOCKDIR"
@@ -230,19 +270,15 @@ while true; do
             _god_on
         else
             [ $(( TICK % 5 )) -eq 0 ] && tune_gaming
-            [ $(( TICK % 5 )) -eq 0 ] && gpu_adaptive
             [ $(( TICK % 10 )) -eq 0 ] && _cfg_load
-            if [ "$_THP" = "1" ]; then
-                _temp=$(thermal_cpu_temp)
-                [ "$_temp" -ge "$CFG_THRESH" ] 2>/dev/null && _do_cooldown "$_temp"
-            fi
+            [ "$_THP" = "1" ] && _do_cooldown "$(thermal_cpu_temp)"
             [ $(( TICK % 10 )) -eq 0 ] && {
                 for _if in $(ip link show up 2>/dev/null | grep -o "wlan[0-9]*"); do timeout 3 iw dev "$_if" set power_save off 2>/dev/null || true; done
                 timeout 5 fstrim /data 2>/dev/null || true
             }
         fi
     else
-        [ "$STATE" != "OFF" ] && { STATE="OFF"; _TSTATE="off"; log "God-Mode OFF"; }
+        [ "$STATE" != "OFF" ] && { STATE="OFF"; _set_state off; log "God-Mode OFF"; }
     fi
 
     TICK=$(( TICK + 1 ))

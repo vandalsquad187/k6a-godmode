@@ -1,5 +1,16 @@
 # Changelog – k6a-godmode
 
+## v2.8 – Unified Governor + Cooldown-Hysterese + Thresholds-UI + Notification
+
+### 🔧 Bugfixes
+- **GPU + THP verschmolzen**: `gpu_adaptive()` entfernt, Logik in `_do_cooldown()` integriert – kein Konflikt mehr zwischen GPU-Adaptive und Thermal-Protect
+- **Cooldown-Hysterese**: Zustandsmaschine mit 10s-Mindestzeit pro Stufe beim Abkühlen (L4 → L3 → L2 → active) – verhindert Pendeln um die Schwelle
+- **`_set_state()`**: Zentrale State-Funktion für alle `_TSTATE`-Übergänge
+
+### ✨ Neuerungen
+- **Thresholds via WebUI**: 11 Slider auf der Settings-Seite (cooking_thresh, L2/L3/L4 Temp, GPU max, Gold max) – live anpassbar ohne Config-Edit
+- **Notification bei L3/L4**: Android-Benachrichtigung wird bei Cooldown L3/L4 gesendet, bei active/L2 wieder entfernt
+
 ## v2.7 – Watchdog + Atomic Write + GPU-Adaptive Cooldown-Respekt
 
 ### 🔧 Bugfixes

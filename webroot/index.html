@@ -166,8 +166,23 @@ body{background:#0a0e17;color:#c8d6e5;font-family:system-ui,-apple-system,sans-s
 </div>
 
 <div class="card">
+<h2>Thermal Thresholds</h2>
+<div class="row"><span class="label">Einschreitschwelle</span><span class="val"><input type="range" min="70" max="95" value="78" id="thr_cooking" oninput="setThresh('thermal_cooking_thresh',this.value);document.getElementById('thr_cooking_v').textContent=this.value+'°C'" style="width:100px;vertical-align:middle"><span id="thr_cooking_v" style="margin-left:6px;font-weight:600;color:var(--a)">78°C</span></span></div>
+<div class="row"><span class="label">L2 Schwelle</span><span class="val"><input type="range" min="65" max="90" value="76" id="thr_l2t" oninput="setThresh('cooldown_l2_temp',this.value);document.getElementById('thr_l2t_v').textContent=this.value+'°C'" style="width:100px;vertical-align:middle"><span id="thr_l2t_v" style="margin-left:6px;font-weight:600;color:var(--a)">76°C</span></span></div>
+<div class="row"><span class="label">L3 Schwelle</span><span class="val"><input type="range" min="70" max="95" value="80" id="thr_l3t" oninput="setThresh('cooldown_l3_temp',this.value);document.getElementById('thr_l3t_v').textContent=this.value+'°C'" style="width:100px;vertical-align:middle"><span id="thr_l3t_v" style="margin-left:6px;font-weight:600;color:var(--a)">80°C</span></span></div>
+<div class="row"><span class="label">L4 Schwelle</span><span class="val"><input type="range" min="75" max="100" value="85" id="thr_l4t" oninput="setThresh('cooldown_l4_temp',this.value);document.getElementById('thr_l4t_v').textContent=this.value+'°C'" style="width:100px;vertical-align:middle"><span id="thr_l4t_v" style="margin-left:6px;font-weight:600;color:var(--a)">85°C</span></span></div>
+<div class="row"><span class="label">Recover Temp</span><span class="val"><input type="range" min="60" max="85" value="72" id="thr_rec" oninput="setThresh('cooldown_recover_temp',this.value);document.getElementById('thr_rec_v').textContent=this.value+'°C'" style="width:100px;vertical-align:middle"><span id="thr_rec_v" style="margin-left:6px;font-weight:600;color:var(--a)">72°C</span></span></div>
+<div class="row"><span class="label">L2 GPU max</span><span class="val"><input type="range" min="355" max="800" value="565" id="thr_l2g" oninput="setThresh('cooldown_l2_gpu_max',(this.value*1000000));document.getElementById('thr_l2g_v').textContent=this.value+' MHz'" style="width:100px;vertical-align:middle"><span id="thr_l2g_v" style="margin-left:6px;font-weight:600;color:var(--a)">565 MHz</span></span></div>
+<div class="row"><span class="label">L3 GPU max</span><span class="val"><input type="range" min="267" max="600" value="430" id="thr_l3g" oninput="setThresh('cooldown_l3_gpu_max',(this.value*1000000));document.getElementById('thr_l3g_v').textContent=this.value+' MHz'" style="width:100px;vertical-align:middle"><span id="thr_l3g_v" style="margin-left:6px;font-weight:600;color:var(--a)">430 MHz</span></span></div>
+<div class="row"><span class="label">L4 GPU max</span><span class="val"><input type="range" min="200" max="500" value="355" id="thr_l4g" oninput="setThresh('cooldown_l4_gpu_max',(this.value*1000000));document.getElementById('thr_l4g_v').textContent=this.value+' MHz'" style="width:100px;vertical-align:middle"><span id="thr_l4g_v" style="margin-left:6px;font-weight:600;color:var(--a)">355 MHz</span></span></div>
+<div class="row"><span class="label">L2 Gold max</span><span class="val"><input type="range" min="1200" max="2400" value="1600" id="thr_l2c" oninput="setThresh('cooldown_l2_gold_max',(this.value*1000));document.getElementById('thr_l2c_v').textContent=(this.value/1000).toFixed(1)+' GHz'" style="width:100px;vertical-align:middle"><span id="thr_l2c_v" style="margin-left:6px;font-weight:600;color:var(--a)">1.6 GHz</span></span></div>
+<div class="row"><span class="label">L3 Gold max</span><span class="val"><input type="range" min="1000" max="2000" value="1400" id="thr_l3c" oninput="setThresh('cooldown_l3_gold_max',(this.value*1000));document.getElementById('thr_l3c_v').textContent=(this.value/1000).toFixed(1)+' GHz'" style="width:100px;vertical-align:middle"><span id="thr_l3c_v" style="margin-left:6px;font-weight:600;color:var(--a)">1.4 GHz</span></span></div>
+<div class="row"><span class="label">L4 Gold max</span><span class="val"><input type="range" min="800" max="1800" value="1200" id="thr_l4c" oninput="setThresh('cooldown_l4_gold_max',(this.value*1000));document.getElementById('thr_l4c_v').textContent=(this.value/1000).toFixed(1)+' GHz'" style="width:100px;vertical-align:middle"><span id="thr_l4c_v" style="margin-left:6px;font-weight:600;color:var(--a)">1.2 GHz</span></span></div>
+</div>
+
+<div class="card">
 <h2>Info</h2>
-<div class="row"><span class="label">Modul</span><span class="val">k6a-godmode 2.6</span></div>
+<div class="row"><span class="label">Modul</span><span class="val">k6a-godmode 2.8</span></div>
 <div class="row"><span class="label">Gerät</span><span class="val">SM7150 (sweet/sweet2)</span></div>
 <div class="row"><span class="label">Kernel</span><span class="val" id="k_r"></span></div>
 <div class="row"><span class="label">Build</span><span class="val" id="k_" style="font-size:11px;word-break:break-all"></span></div>
@@ -268,6 +283,13 @@ document.getElementById('featBadges').innerHTML=fb||'<span style="color:#6b7f9a;
 var _gg=document.getElementById('ggov'),_cm=document.getElementById('cmax'),_cg=document.getElementById('cgov');
 var _gs=d.gov_gpu||'--',_cs=d.cpu_sil_max||'?',_cgm=d.cpu_gold_max||'?',_sl=d.gov_sil||'--';
 if(_gg)_gg.textContent=_gs;if(_cm)_cm.textContent=_cs+'/'+_cgm+' MHz';if(_cg)_cg.textContent=_sl;
+
+// Sync thresholds from data.txt
+function syncThresholds(){
+var m={thr_cooking:['cfg_cooking_thresh','°C'],thr_l2t:['cfg_l2_temp','°C'],thr_l3t:['cfg_l3_temp','°C'],thr_l4t:['cfg_l4_temp','°C'],thr_rec:['cfg_recover_temp','°C'],thr_l2g:['cfg_l2_gpu',' MHz',1e-6],thr_l3g:['cfg_l3_gpu',' MHz',1e-6],thr_l4g:['cfg_l4_gpu',' MHz',1e-6],thr_l2c:['cfg_l2_gold',' GHz',1e-3],thr_l3c:['cfg_l3_gold',' GHz',1e-3],thr_l4c:['cfg_l4_gold',' GHz',1e-3]};
+for(var id in m){var el=document.getElementById(id);if(!el)continue;var parts=m[id],key=parts[0],suffix=parts[1],scale=parts[2]||1;var val=d[key];if(val){var num=parseInt(val)*scale;if(suffix=='°C'||suffix==' MHz'){el.value=num;document.getElementById(id+'_v').textContent=num+suffix}else{el.value=num;document.getElementById(id+'_v').textContent=(val/1000).toFixed(1)+suffix}}}
+}
+syncThresholds();
 }
 
 var _pendingGod=null;var _pendingThp=null;var _pendingWifi=null;
@@ -291,6 +313,7 @@ document.getElementById('cmdOut').textContent=m[q]||'unknown'
 }
 
 function setWifi(v){if(!d.modpath)return;_pendingWifi=v;d.wifi_boost=v+"";document.getElementById("wifiToggle").checked=v==1||v==="1";ksuExec("sed -i 's/^wifi_boost=.*/wifi_boost="+v+"/' "+d.modpath+"/config/settings.conf");setTimeout(refreshData,500)}
+function setThresh(k,v){if(!d.modpath)return;ksuExec("sed -i 's|^"+k+"=.*|"+k+"="+v+"|' "+d.modpath+"/config/settings.conf")}
 
 function toggleFullscreen(on){
 try{

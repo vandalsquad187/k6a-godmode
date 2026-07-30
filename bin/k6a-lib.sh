@@ -432,46 +432,4 @@ thermal_disable() {
     log "Thermal: trips raised"
 }
 
-# ── GPU Adaptive ─────────────────────────────────────────────────────────────
-gpu_adaptive() {
-    local _ts
-    _ts=$(cat "$THERMAL_STATE_FILE" 2>/dev/null || echo "active")
-    case "$_ts" in cooldown_l2|cooldown_l3|cooldown_l4) return 0 ;; esac
-    local busy tpl temp
-    busy=$(cat /sys/class/kgsl/kgsl-3d0/gpu_busy_percentage 2>/dev/null || echo 0)
-    busy=${busy%\%}
-    case "$busy" in ""|*[!0-9]*) busy=0 ;; esac
-
-    tpl=$(cat /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 2>/dev/null || echo 0)
-    temp=$(thermal_cpu_temp)
-
-    # Stufe 1: Hohe Last + moderate Temp -> stabil halten
-    if [ "$busy" -gt 70 ] && [ "$temp" -lt 75 ] 2>/dev/null; then
-        if [ "$tpl" -gt 0 ] 2>/dev/null; then
-            w /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 0
-            w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq "$GPU_MAX_FREQ"
-            dbg "GPU adaptive: busy=${busy}% temp=${temp}C tpwr=${tpl}->0 (high load, cool)"
-        fi
-        return
-    fi
-
-    # Stufe 2: Hohe Last + hohe Temp -> begrenzen
-    if [ "$busy" -gt 50 ] && [ "$temp" -gt 80 ] 2>/dev/null; then
-        local target_pwr=2
-        local target_freq=565000000
-        [ "$temp" -gt 85 ] && { target_pwr=3; target_freq=430000000; }
-        if [ "$tpl" -ne "$target_pwr" ] 2>/dev/null; then
-            w /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel "$target_pwr"
-            w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq "$target_freq"
-            dbg "GPU adaptive: busy=${busy}% temp=${temp}C tpwr=${target_pwr} ${target_freq}Hz"
-        fi
-        return
-    fi
-
-    # Stufe 3: Geringe Last -> Watchdog
-    if [ "$tpl" -gt 4 ] 2>/dev/null; then
-        w /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 0
-        w /sys/class/kgsl/kgsl-3d0/devfreq/max_freq "$GPU_MAX_FREQ"
-        dbg "GPU watchdog: tpwr ${tpl}->0"
-    fi
-}
+# ── GPU Adaptive – entfernt in v2.8, Logik in _do_cooldown() im Controller ──
