@@ -1,5 +1,14 @@
 # Changelog – k6a-godmode
 
+## v2.9 – OFF-restore + revertTune + Notification-Channel
+
+### 🔧 Bugfixes
+- **God-Mode OFF restored Thermal-Trips**: Beim Deaktivieren von God-Mode werden die originalen Trip-Temperaturen wiederhergestellt – keine Überhitzungsgefahr wenn THP vorher aktiv war
+- **`revertTune()` repariert**: Setzt jetzt alle Sub-Toggles zurück auf Default (god_gpu/sched/io/vm/irq/net/props=1, wifi_boost=0) statt sinnlosem god_mode OFF/ON-Cycle
+
+### ✨ Neuerungen
+- **Notification-Channel**: `cmd notification create_channel` in `_startup()` – stellt sicher, dass Cooldown-Benachrichtigungen auf Android 14+ zuverlässig funktionieren
+
 ## v2.8 – Unified Governor + Cooldown-Hysterese + Thresholds-UI + Notification
 
 ### 🔧 Bugfixes

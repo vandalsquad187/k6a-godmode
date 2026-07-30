@@ -1,7 +1,7 @@
 id=k6a_tune
 name=k6a-godmode
-version=v2.8
-versionCode=13
-description=k6a-godmode v2.8 — Unified Governor | Cooldown-Hysterese | Thresholds-UI | Notification
+version=v2.9
+versionCode=14
+description=k6a-godmode v2.9 — OFF-restore | revertTune | Notification-Channel
 icon=icon1.png
 banner=icon1.png

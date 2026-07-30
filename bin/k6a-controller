@@ -249,8 +249,9 @@ _startup() {
     detect_kernel_features
     thermal_trips_restore
     _set_state active
+    cmd notification create_channel k6a_thermal "k6a-godmode" 3 2>/dev/null || true
     printf 'pid=%s\nstate=OFF\ngod_mode=0\n' "$$" > "$DATA" 2>/dev/null || true
-    log "k6a-godmode v2.8 - Unified Governor | Hysterese | Thresholds-UI"
+    log "k6a-godmode v2.9 - OFF-restore | revertTune | Notification-Channel"
 }
 
 trap 'echo 0 > "$CRASH_FILE" 2>/dev/null; log "Controller stopped"; thermal_trips_restore; rm -rf "$LOCKDIR"
@@ -278,7 +279,7 @@ while true; do
             }
         fi
     else
-        [ "$STATE" != "OFF" ] && { STATE="OFF"; _set_state off; log "God-Mode OFF"; }
+        [ "$STATE" != "OFF" ] && { STATE="OFF"; _set_state off; thermal_trips_restore; log "God-Mode OFF (trips restored)"; }
     fi
 
     TICK=$(( TICK + 1 ))
