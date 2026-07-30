@@ -1,104 +1,121 @@
-# k6a-godmode v2.5.5
+# k6a-godmode v2.9
 
-GPU-adaptives God-Mode für **SM7150 (sweet/sweet2)** mit **v4.2.6 Kernel** – entwickelt und optimiert für CODM Battle Royale.
+Unified Gaming-Mode für **SM7150 (sweet/sweet2)** — Cooldown-Hysterese, Thresholds-UI, Atomic Write, Watchdog.
 
 ## Voraussetzung
 
-**Kernel v4.2.6+ (vandalsquad187)** mit folgenden Patches:
+**BadazzKernel** (empfohlen) oder jeder SM7150-Kernel ab v4.14.369:
 
 | Patch | Beschreibung |
 |-------|-------------|
-| vbat/BCL per DT disabled | pm6150.dtsi: status=disabled fuer alle pm6150-bcl und pm6150-vbat Zonen. CPU FREEZE durch low_limits_cap-Governor eliminiert. |
-| Cooling-Floor dynamisch | cpu_cooling.c: max_state temperaturabhaengig. Unter 75 Grad nie unter 1,5 GHz Gold, bei >90 Grad volle Kuehlung. |
-| libperfmgr silent drop | cpufreq.c: bei min > max wird der Write ignoriert statt -EINVAL (kein dmesg-Spam). |
+| vbat/BCL per DT disabled | CPU FREEZE eliminiert |
+| Cooling-Floor dynamisch | CPU nie unter 1,5 GHz beim Gaming |
+| libperfmgr silent drop | Kein dmesg-Spam bei min>max |
 
-Ohne diese Kernel-Patches arbeitet das Modul ineffizient (CPU FREEZE, Yo-Yo).
+Ohne diese Patches arbeitet das Modul ineffizient (CPU FREEZE, Yo-Yo).
 
 ## Features
 
-### GPU adaptiv (355/650/800 MHz)
-- gpu_busy_percentage live ausgewertet - alle 5s
-- unter 30% Last: 355 MHz (Idle, Looten)
-- 30-65% Last: 650 MHz (normales Gaming)
-- ueber 65% Last: 800 MHz (Kampf, Boost)
+### Unified Governor (v2.8)
+- `gpu_adaptive()` + `_do_cooldown()` verschmolzen – eine Stelle regelt GPU
+- **Cooldown-Hysterese**: 10s Mindestzeit pro Stufe (L4→L3→L2→active) – kein Pendeln
+- GPU-Watchdog: reset bei stuck pwrlevel > 4
+- GPU-Adaptive: volle Leistung bei busy>70% + temp<75°C
+
+### Thermal-Protect (THP)
+- 4 Cooldown-Stufen L2/L3/L4 mit konfigurierbaren Schwellen
+- Alle Grenzen via WebUI-Slider live anpassbar
+- Android-Notification bei L3/L4 (via Notification-Channel)
+- God-Mode OFF restored originale Trip-Temperaturen
+
+### Controller-Watchdog (v2.7)
+- `service.sh` startet Controller in `while true`-Loop
+- Automatischer Restart nach 6s bei Crash
+- Crash-Zähler mit 30s Backoff bei >3 Crushes
 
 ### CPU & Scheduler
-- Cooling-Floor im Kernel (nie unter 1,5 GHz beim Gaming)
-- schedutil up_rate_limit_us = 500 (schnelles Hochtakten)
-- schedutil down_rate_limit_us = 20000 (Frequenz halten)
+- schedutil up_rate_limit_us=500 / down_rate_limit_us=20000
 - taskset auf Gold-Kerne (RenderThread, GLThread, UnityMain)
-- CHRT FIFO-Prioritaet fuer Render-Threads
+- CHRT FIFO-Priorität für Render-Threads
+- Cooldown-Gold-Max pro Stufe konfigurierbar
 
-### CODM Priority
-- renice -n -10 direkt auf CODM-Prozess
-- oom_adj = -17 verhindert Kill bei Memory Pressure
+### GPU
+- 8 Pwrlevel (825/800/650/565/430/355/267/180 MHz)
+- gpu_gaming(): force_clk_on=1, throttling=1, bus_split=1
+- gpu_cooldown(): pro Stufe konfigurierbar (L2=565/L3=430/L4=355 MHz)
+- Atomic Write: data.txt via Tempfile + mv – kein Toggle-Blinken
 
-### Thermal
-- Trip-Temperaturen auf 95 Grad angehoben (ausser Safe-Zonen)
-- _TRIP_SAFE schuetzt Battery, Touch, Charger, BMS
-- 55 Grad Guard fuer quiet_therm-step
-- _THP drosselt GPU bei >85 Grad (optional, ueber WebUI)
-
-### Selbstheilung
-- service.sh mit while true-Loop
-- Controller crasht - automatischer Neustart nach 5s
+### WebUI
+- **Home-Tab**: Live-Thermal-State, Temp, CPU/GPU MHz, RAM, Bat
+- **Settings-Tab**: 11 Threshold-Slider (Temps + GPU/Gold max)
+- **Console-Tab**: CPU/GPU Boost, Governor-Wechsel, Log, Debug
+- **revertTune()**: Setzt alle Sub-Toggles zurück auf Default
+- Accent-Farbe wählbar, Fullscreen, Ripple-Effekt
 
 ### Sonstiges
-- Wakelock Blocker
-- LRU-GEN Enabler
-- Netzwerk-Tuning (wlan power_save off)
+- Wakelock Blocker (Boeffla)
+- LRU-Gen Enabler
+- WiFi-Boost (bbr/cubic)
 - fstrim alle 10s
-- Kernel-Fallback fuer Temp-Sensoren
+- Kernel-Fallback für Temp-Sensoren
+- Stale-Lock-Erkennung mit PID-Verifikation
 
 ## Installation
 
-1. Kernel v4.2.6+ flashen
-2. Modul per KernelSU / Magisk installieren
+1. BadazzKernel flashen
+2. Modul per KernelSU / Magisk / APatch installieren
 3. Neustart
-4. WebUI oeffnen (KernelSU App - Modul - k6a-godmode)
-5. k6a enable
+4. WebUI öffnen (KernelSU App → Modul → k6a-godmode)
+5. God-Mode aktivieren
 
 ## WebUI Toggles
 
 | Button | Funktion |
 |--------|----------|
 | God-Mode | Aktiviert alle Gaming-Tweaks |
-| Thermal Protect | GPU-Drossel bei >85 Grad (optional) |
-| GPU | GPU-Tuning an/aus |
-| Sched | Scheduler-Tuning an/aus |
+| Thermal Protect | Cooldown-Stufen L2/L3/L4 |
+| WiFi Boost | TCP bbr/cubic |
+| GPU | GPU-Tuning (governor, freq, force_clk_on) |
+| Sched | Scheduler-Tuning (schedutil, taskset) |
 | IO | I/O-Scheduler + read_ahead |
-| VM | VM-Parameter |
-| IRQ | IRQ-Affinitaet |
-| Net | Netzwerk-Tuning |
-| Props | System-Properties |
+| VM | VM-Parameter (swappiness, dirty_ratio) |
+| IRQ | IRQ-Affinität auf Gold-Kerne |
+| Net | Netzwerk-Tuning (buffers, backlog) |
+| Props | System-Properties (render, sf, gpu) |
 
 ## Dateistruktur
 
 ```
 /data/adb/modules/k6a_tune/
   bin/
-    k6a-controller      Haupt-Loop (Watchdog, GPU-adaptive)
-    k6a-lib.sh          Library (GPU, CPU, Thermal, Sched)
+    k6a-controller      Haupt-Loop (Unified Governor, Watchdog)
+    k6a-lib.sh          Library (GPU, CPU, Thermal, Sched, Props)
   config/
-    settings.conf       Toggle-Konfiguration
+    settings.conf       Alle Toggle + Threshold-Konfiguration
     god_mode            God-Mode State (0/1)
     thermal_protect     Thermal-Protect State (0/1)
   webroot/
-    index.html          WebUI
-  service.sh            Boot-Script (Selbstheilung)
+    index.html          WebUI (Home/Console/Settings)
+    data.txt            Live-Daten (polled alle 2s)
+    log.txt             Letzte 30 Log-Zeilen
+  run/
+    lock/               Lock-Directory mit PID
+    crash_count         Crash-Zähler für Backoff
+    thermal_state       Aktueller _TSTATE für gpu_adaptive
+  service.sh            Boot-Script (Watchdog-Loop)
   module.prop           Magisk-Metadaten
   CHANGELOG.md
 ```
 
 ## Changelog
 
-Siehe CHANGELOG.md
+Siehe [CHANGELOG.md](CHANGELOG.md)
 
 ## Credits
 
-- BadazZ89 - Modul-Entwicklung
-- vandalsquad187 - Kernel v4.2.6
-- WeAreRavenS - Inspiration
+- BadazZ89 – Modul-Entwicklung
+- vandalsquad187 – [BadazzKernel](https://github.com/vandalsquad187/BadazzKernel)
+- WeAreRavenS – Inspiration
 
 ## Lizenz
 
