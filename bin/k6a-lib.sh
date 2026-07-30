@@ -434,6 +434,9 @@ thermal_disable() {
 
 # ── GPU Adaptive ─────────────────────────────────────────────────────────────
 gpu_adaptive() {
+    local _ts
+    _ts=$(cat "$THERMAL_STATE_FILE" 2>/dev/null || echo "active")
+    case "$_ts" in cooldown_l2|cooldown_l3|cooldown_l4) return 0 ;; esac
     local busy tpl temp
     busy=$(cat /sys/class/kgsl/kgsl-3d0/gpu_busy_percentage 2>/dev/null || echo 0)
     busy=${busy%\%}

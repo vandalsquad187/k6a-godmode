@@ -1,8 +1,7 @@
 id=k6a_tune
 name=k6a-godmode
-version=v2.5.5
-versionCode=10
-author=BadazZ89
-description=k6a-godmode v2.5.5 — SchedTune Boost 80 | GPU force_no_nap | Stale-Lock-Fix
+version=v2.7
+versionCode=12
+description=k6a-godmode v2.7 — Watchdog-Restart | Atomic Write | GPU-Adaptive Cooldown-Respekt | Thermal-Status Home-Tab
 icon=icon1.png
 banner=icon1.png

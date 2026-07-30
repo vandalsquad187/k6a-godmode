@@ -1,5 +1,17 @@
 # Changelog – k6a-godmode
 
+## v2.7 – Watchdog + Atomic Write + GPU-Adaptive Cooldown-Respekt
+
+### 🔧 Bugfixes
+- **Controller-Watchdog**: `service.sh` startet Controller jetzt in einer `while true`-Schleife (crash = automatischer Restart nach 6s)
+- **Crash-Zähler**: Bei >3 Crushes innerhalb einer Session 30s Backoff bevor Neustart
+- **Atomic Write**: `_write_data()` schreibt in Tempfile `data.txt.$$.tmp` und ersetzt per `mv` – eliminiert das Toggle-Blinken alle 15-30s (Race-Condition WebUI-Poll vs. Controller-Write)
+- **GPU-Adaptive ignoriert Cooldown**: `gpu_adaptive()` prüft `_TSTATE` via `thermal_state`-Datei; im Cooldown (L2/L3/L4) wird nicht eingegriffen – kein GPU-Throttle-Yo-Yo mehr
+
+### ✨ Neuerungen
+- **Home-Tab Thermal-Anzeige**: Zeigt `active ✅`, `🌡️ L2 76°C`, `L3 80°C` oder `L4 85°C` live in der Status-Karte
+- **`_TSTATE` exportiert**: Wird in `$MODDIR/run/thermal_state` und `data.txt` persistiert
+
 ## v2.5.5 – Stale-Lock-Fix (PID-Recycling)
 
 ### Problem

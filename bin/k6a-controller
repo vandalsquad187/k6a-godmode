@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# k6a-controller  v2.6 — _TSTATE dynamisch | Cooldown konfigurierbar
+# k6a-controller  v2.7 — _TSTATE dynamisch | Cooldown konfigurierbar
 
 MODDIR="${1:-/data/adb/modules/k6a_tune}"
 CONFIG="$MODDIR/config/settings.conf"
@@ -8,6 +8,8 @@ DATA="$MODDIR/webroot/data.txt"
 LOG_WEB="$MODDIR/webroot/log.txt"
 GOD_FILE="$MODDIR/config/god_mode"
 THP_FILE="$MODDIR/config/thermal_protect"
+CRASH_FILE="$MODDIR/run/crash_count"
+THERMAL_STATE_FILE="$MODDIR/run/thermal_state"
 LOCK="$MODDIR/run/controller.pid"
 LOG_FILE="$LOG"
 
@@ -60,6 +62,7 @@ _trim_log() {
 _god_on() {
     log "-> GOD-MODE ON"; _cfg_load
     _TSTATE="active"
+    echo "$_TSTATE" > "$THERMAL_STATE_FILE" 2>/dev/null || true
     cpu_hotplug_online_all
     [ "$_THP" = "1" ] && lmh_disable
     [ "$_THP" = "1" ] && thermal_disable
@@ -94,21 +97,25 @@ _do_cooldown() {
         gpu_cooldown 4 "${CD_L4_GPU_MAX:-355000000}"
         w "$P6/scaling_max_freq" "${CD_L4_GOLD_MAX:-1200000}"
         _TSTATE="cooldown_l4"
+        echo "$_TSTATE" > "$THERMAL_STATE_FILE" 2>/dev/null || true
         _ratelog "Cooldown L4 ($temp>=${CD_L4_TEMP}C): GPU ${CD_L4_GPU_MAX} Gold ${CD_L4_GOLD_MAX}kHz"
     elif [ "$temp" -ge "${CD_L3_TEMP:-80}" ] 2>/dev/null; then
         gpu_cooldown 3 "${CD_L3_GPU_MAX:-430000000}"
         w "$P6/scaling_max_freq" "${CD_L3_GOLD_MAX:-1400000}"
         _TSTATE="cooldown_l3"
+        echo "$_TSTATE" > "$THERMAL_STATE_FILE" 2>/dev/null || true
         _ratelog "Cooldown L3 ($temp>=${CD_L3_TEMP}C): GPU ${CD_L3_GPU_MAX} Gold ${CD_L3_GOLD_MAX}kHz"
     elif [ "$temp" -ge "${CD_L2_TEMP:-76}" ] 2>/dev/null; then
         gpu_cooldown 2 "${CD_L2_GPU_MAX:-565000000}"
         w "$P6/scaling_max_freq" "${CD_L2_GOLD_MAX:-1600000}"
         _TSTATE="cooldown_l2"
+        echo "$_TSTATE" > "$THERMAL_STATE_FILE" 2>/dev/null || true
         _ratelog "Cooldown L2 ($temp>=${CD_L2_TEMP}C): GPU ${CD_L2_GPU_MAX} Gold ${CD_L2_GOLD_MAX}kHz"
     elif [ "$temp" -le "${CD_RECOVER_TEMP:-72}" ] 2>/dev/null; then
         gpu_gaming
         w "$P6/scaling_max_freq" 1804800
         _TSTATE="active"
+        echo "$_TSTATE" > "$THERMAL_STATE_FILE" 2>/dev/null || true
         _ratelog "Cooldown off: ${temp}C"
     fi
 }
@@ -132,46 +139,48 @@ _write_data() {
     local kv
     kv=$(uname -r 2>/dev/null || echo "unknown")
     kv2=$(uname -v 2>/dev/null || echo "unknown")
-    : > "$DATA"
-    printf 'pid=%s\n' "$$" >> "$DATA"
-    printf 'modpath=%s\n' "$MODDIR" >> "$DATA"
-    printf 'state=%s\n' "$STATE" >> "$DATA"
-    printf 'god_mode=%s\n' "$_GOD" >> "$DATA"
-    printf 'thermal_protect=%s\n' "$_THP" >> "$DATA"
-    printf 'thermal_state=%s\n' "$_TSTATE" >> "$DATA"
-    printf 'god_gpu=%s\n' "$CFG_GOD_GPU" >> "$DATA"
-    printf 'god_sched=%s\n' "$CFG_GOD_SCHED" >> "$DATA"
-    printf 'god_io=%s\n' "$CFG_GOD_IO" >> "$DATA"
-    printf 'god_vm=%s\n' "$CFG_GOD_VM" >> "$DATA"
-    printf 'god_irq=%s\n' "$CFG_GOD_IRQ" >> "$DATA"
-    printf 'god_net=%s\n' "$CFG_GOD_NET" >> "$DATA"
-    printf 'god_props=%s\n' "$CFG_GOD_PROPS" >> "$DATA"
-    printf 'wifi_boost=%s\n' "$CFG_WIFI_BOOST" >> "$DATA"
-    printf 'temp=%s\n' "${temp}" >> "$DATA"
-    printf 'cpu_sil_mhz=%s\n' "${cpu_s}" >> "$DATA"
-    printf 'cpu_gold_mhz=%s\n' "${cpu_g}" >> "$DATA"
-    printf 'gpu_mhz=%s\n' "${gpu_mhz}" >> "$DATA"
-    printf 'gpu_busy=%s\n' "${gpu_busy}" >> "$DATA"
-    printf 'bat=%s\n' "${bpc}%" >> "$DATA"
-    printf 'bat_temp=%s\n' "${btpc}" >> "$DATA"
-    printf 'kernel=%s\n' "${kv}" >> "$DATA"
-    printf 'kernel_v=%s\n' "${kv2}" >> "$DATA"
-    printf 'uptime=%s\n' "${uptime_str}" >> "$DATA"
-    printf 'ram_used=%s\n' "${ram_used}" >> "$DATA"
-    printf 'ram_total=%s\n' "${ram_total}" >> "$DATA"
-    printf 'tick=%s\n' "${TICK}" >> "$DATA"
-    printf 'features=hotplug=%s lru=%s boeffla=%s uclamp=%s thermal_w=%s\n' "${FEATURE_HOTPLUG}" "${FEATURE_LRU_GEN}" "${FEATURE_BOEFFLA}" "${FEATURE_UCLAMP}" "${FEATURE_THERMAL_WRITABLE}" >> "$DATA"
-    printf 'gov_sil=%s\n' "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)" >> "$DATA"
-    printf 'gov_gold=%s\n' "$(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_governor 2>/dev/null)" >> "$DATA"
-    printf 'gov_gpu=%s\n' "$(cat /sys/class/kgsl/kgsl-3d0/devfreq/governor 2>/dev/null)" >> "$DATA"
-    printf 'cpu_sil_max=%s\n' "$(($(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2>/dev/null) / 1000))" >> "$DATA"
-    printf 'cpu_gold_max=%s\n' "$(($(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_max_freq 2>/dev/null) / 1000))" >> "$DATA"
+    _tmp="$DATA.$$.tmp"
+    : > "$_tmp"
+    printf 'pid=%s\n' "$$" >> "$_tmp"
+    printf 'modpath=%s\n' "$MODDIR" >> "$_tmp"
+    printf 'state=%s\n' "$STATE" >> "$_tmp"
+    printf 'god_mode=%s\n' "$_GOD" >> "$_tmp"
+    printf 'thermal_protect=%s\n' "$_THP" >> "$_tmp"
+    printf 'thermal_state=%s\n' "$_TSTATE" >> "$_tmp"
+    printf 'god_gpu=%s\n' "$CFG_GOD_GPU" >> "$_tmp"
+    printf 'god_sched=%s\n' "$CFG_GOD_SCHED" >> "$_tmp"
+    printf 'god_io=%s\n' "$CFG_GOD_IO" >> "$_tmp"
+    printf 'god_vm=%s\n' "$CFG_GOD_VM" >> "$_tmp"
+    printf 'god_irq=%s\n' "$CFG_GOD_IRQ" >> "$_tmp"
+    printf 'god_net=%s\n' "$CFG_GOD_NET" >> "$_tmp"
+    printf 'god_props=%s\n' "$CFG_GOD_PROPS" >> "$_tmp"
+    printf 'wifi_boost=%s\n' "$CFG_WIFI_BOOST" >> "$_tmp"
+    printf 'temp=%s\n' "${temp}" >> "$_tmp"
+    printf 'cpu_sil_mhz=%s\n' "${cpu_s}" >> "$_tmp"
+    printf 'cpu_gold_mhz=%s\n' "${cpu_g}" >> "$_tmp"
+    printf 'gpu_mhz=%s\n' "${gpu_mhz}" >> "$_tmp"
+    printf 'gpu_busy=%s\n' "${gpu_busy}" >> "$_tmp"
+    printf 'bat=%s\n' "${bpc}%" >> "$_tmp"
+    printf 'bat_temp=%s\n' "${btpc}" >> "$_tmp"
+    printf 'kernel=%s\n' "${kv}" >> "$_tmp"
+    printf 'kernel_v=%s\n' "${kv2}" >> "$_tmp"
+    printf 'uptime=%s\n' "${uptime_str}" >> "$_tmp"
+    printf 'ram_used=%s\n' "${ram_used}" >> "$_tmp"
+    printf 'ram_total=%s\n' "${ram_total}" >> "$_tmp"
+    printf 'tick=%s\n' "${TICK}" >> "$_tmp"
+    printf 'features=hotplug=%s lru=%s boeffla=%s uclamp=%s thermal_w=%s\n' "${FEATURE_HOTPLUG}" "${FEATURE_LRU_GEN}" "${FEATURE_BOEFFLA}" "${FEATURE_UCLAMP}" "${FEATURE_THERMAL_WRITABLE}" >> "$_tmp"
+    printf 'gov_sil=%s\n' "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)" >> "$_tmp"
+    printf 'gov_gold=%s\n' "$(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_governor 2>/dev/null)" >> "$_tmp"
+    printf 'gov_gpu=%s\n' "$(cat /sys/class/kgsl/kgsl-3d0/devfreq/governor 2>/dev/null)" >> "$_tmp"
+    printf 'cpu_sil_max=%s\n' "$(($(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2>/dev/null) / 1000))" >> "$_tmp"
+    printf 'cpu_gold_max=%s\n' "$(($(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_max_freq 2>/dev/null) / 1000))" >> "$_tmp"
+    mv "$_tmp" "$DATA"
     tail -30 "$LOG" > "$LOG_WEB" 2>/dev/null || true
 }
 LOCKDIR="$MODDIR/run/lock"
 
 _startup() {
-    if ! mkdir "$LOCKDIR" 2>/dev/null; then
+    if ! mkdir -p "$LOCKDIR" 2>/dev/null; then
         if [ -f "$LOCKDIR/pid" ]; then
             _old_pid=$(cat "$LOCKDIR/pid" 2>/dev/null)
             if [ -n "$_old_pid" ] && kill -0 "$_old_pid" 2>/dev/null; then
@@ -185,17 +194,27 @@ _startup() {
             fi
         fi
         rm -rf "$LOCKDIR"
-        mkdir "$LOCKDIR" || exit 1
+        mkdir -p "$LOCKDIR" || exit 1
+    fi
+    # Crash counter with backoff
+    _CRASH_PREV=$(cat "$CRASH_FILE" 2>/dev/null || echo 0)
+    _CRASH_NEW=$(( _CRASH_PREV + 1 ))
+    echo "$_CRASH_NEW" > "$CRASH_FILE"
+    if [ "$_CRASH_NEW" -gt 3 ]; then
+        log "Crash-Limit (${_CRASH_NEW}), sleep 30s"
+        sleep 30
     fi
     echo $$ > "$LOCKDIR/pid"
     _cfg_load; _cache_thermal_zones
     detect_kernel_features
     thermal_trips_restore
+    echo "active" > "$THERMAL_STATE_FILE" 2>/dev/null || true
     printf 'pid=%s\nstate=OFF\ngod_mode=0\n' "$$" > "$DATA" 2>/dev/null || true
-    log "k6a-godmode v2.6 - _TSTATE dynamic | Cooldown configurable"
+    log "k6a-godmode v2.7 - _TSTATE dynamic | Cooldown configurable"
 }
 
-trap 'log "Controller stopped"; thermal_trips_restore; rm -rf "$LOCKDIR"' EXIT TERM INT
+trap 'echo 0 > "$CRASH_FILE" 2>/dev/null; log "Controller stopped"; thermal_trips_restore; rm -rf "$LOCKDIR"
+' EXIT TERM INT
 
 _startup
 while true; do
