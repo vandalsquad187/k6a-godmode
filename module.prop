@@ -1,7 +1,7 @@
 id=k6a_tune
 name=k6a-godmode
-version=v2.9
-versionCode=14
-description=k6a-godmode v2.9 — OFF-restore | revertTune | Notification-Channel
+version=v2.10
+versionCode=15
+description=k6a-godmode v2.10 — Thermal-Profile (Badazz/Gaming/Battery)
 icon=icon1.png
 banner=icon1.png
