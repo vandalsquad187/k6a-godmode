@@ -128,7 +128,7 @@ Siehe [CHANGELOG.md](CHANGELOG.md)
 ## Credits
 
 - BadazZ89 – Modul-& Kernel Entwicklung
-- vandalsquad187 – [BadazzKernel](https://github.com/vandalsquad187/BadazzKernel)
+- AI🫡
 
 ## Lizenz
 
