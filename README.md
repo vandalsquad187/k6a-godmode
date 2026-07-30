@@ -1,3 +1,16 @@
+<div align="center">
+  <img src="assets/logo.png" alt="Badazz89" width="120"/>
+  <h1>k6a-godmode v2.10</h1>
+  <p>Unified Gaming-Mode für SM7150 – optimiert für BadazzKernel</p>
+  <p>
+    <img src="https://img.shields.io/badge/Version-2.10-green?style=flat-square">
+    <img src="https://img.shields.io/badge/Kernel-BadazzKernel%204.14.369-blue?style=flat-square">
+    <img src="https://img.shields.io/badge/API-Magisk%20%7C%20KSU%20%7C%20APatch-orange?style=flat-square">
+  </p>
+</div>
+
+---
+
 # k6a-godmode v2.10
 
 Unified Gaming-Mode für **SM7150 (sweet/sweet2)** — Thermal-Profile, Cooldown-Hysterese, Thresholds-UI, Atomic Write, Watchdog.
