@@ -77,6 +77,18 @@ _god_on() {
     lru_gen_enable
     wakelock_block
     tune_gaming
+    if [ -d /sys/kernel/k6a_thermal ]; then
+        echo 85000 > /sys/kernel/k6a_thermal/thermal_floor_temp1 2>/dev/null || true
+        echo 90000 > /sys/kernel/k6a_thermal/thermal_floor_temp2 2>/dev/null || true
+        echo 95000 > /sys/kernel/k6a_thermal/thermal_floor_temp3 2>/dev/null || true
+        log "CPU cooling floor: thresholds raised (85/90/95°C)"
+    fi
+    if [ -d /sys/kernel/k6a_gpu_thermal/thermal_floor ]; then
+        echo "0 1 2" > /sys/kernel/k6a_gpu_thermal/thermal_floor/gpu_thermal_floor_levels 2>/dev/null || true
+        echo 75000  > /sys/kernel/k6a_gpu_thermal/thermal_floor/gpu_thermal_floor_temp_low 2>/dev/null || true
+        echo 90000  > /sys/kernel/k6a_gpu_thermal/thermal_floor/gpu_thermal_floor_temp_high 2>/dev/null || true
+        log "GPU thermal floor: gaming levels set (levels=0 1 2)"
+    fi
     STATE="GAMING"
     local active=""
     [ "$CFG_GOD_GPU" = "1" ]   && active="${active}gpu "
@@ -279,7 +291,20 @@ while true; do
             }
         fi
     else
-        [ "$STATE" != "OFF" ] && { STATE="OFF"; _set_state off; thermal_trips_restore; log "God-Mode OFF (trips restored)"; }
+        [ "$STATE" != "OFF" ] && {
+            STATE="OFF"; _set_state off; thermal_trips_restore
+            if [ -d /sys/kernel/k6a_thermal ]; then
+                echo 80000 > /sys/kernel/k6a_thermal/thermal_floor_temp1 2>/dev/null || true
+                echo 90000 > /sys/kernel/k6a_thermal/thermal_floor_temp2 2>/dev/null || true
+                echo 92000 > /sys/kernel/k6a_thermal/thermal_floor_temp3 2>/dev/null || true
+            fi
+            if [ -d /sys/kernel/k6a_gpu_thermal/thermal_floor ]; then
+                echo "5 4 3" > /sys/kernel/k6a_gpu_thermal/thermal_floor/gpu_thermal_floor_levels 2>/dev/null || true
+                echo 70000  > /sys/kernel/k6a_gpu_thermal/thermal_floor/gpu_thermal_floor_temp_low 2>/dev/null || true
+                echo 85000  > /sys/kernel/k6a_gpu_thermal/thermal_floor/gpu_thermal_floor_temp_high 2>/dev/null || true
+            fi
+            log "God-Mode OFF (trips restored + cooling defaults)"
+        }
     fi
 
     TICK=$(( TICK + 1 ))

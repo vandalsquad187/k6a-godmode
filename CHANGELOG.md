@@ -1,43 +1,25 @@
 # Changelog – k6a-godmode
 
-## v2.10 – Thermal-Profile (Badazz/Gaming/Battery)
+## v2.11 – GPU-Bugfix + Kernel-Synergie
 
-### ✨ Neuerungen
-- **3 Profile**: 🔥 Badazz (max Performance), 🎮 Gaming (ausgewogen), 🔋 Battery (sparsam) – setzen alle 11 Thresholds auf einmal
-- **Profil-Buttons** in der Thermal-Thresholds-Card auf der Settings-Seite
-- Slider springen sofort auf die Profil-Werte, danach manuelle Verfeinerung möglich
+### Neuer Kernel: BadazzKernel mit k6a-Optimierungen
+- **CONFIG_MSM_PERFORMANCE=y** → `lmh_disable()`-Writes auf `msm_performance/parameters/` wirken endlich
+- **CONFIG_CPU_FREQ_TIMES=y** → `time_in_state` für CPU-Frequenzstatistiken verfügbar
+- **CONFIG_PSI=y** → `/proc/pressure/cpu|memory|io` für Last-Erkennung
+- **GPU thermal floor Bugfix** → Lokale statics in `_adjust_pwrlevel()` entfernt, sysfs-Writes wirken jetzt
 
-## v2.9 – OFF-restore + revertTune + Notification-Channel
+### Modul-Seite: Korrigierte sysfs-Pfade
+- CPU Cooling Floor: `/sys/kernel/k6a_thermal/` (vorher falsch: `thermal_floor/`)
+- GPU thermal floor: `/sys/kernel/k6a_gpu_thermal/thermal_floor/` (vorher falsch: `gpu_thermal_floor/`)
+- `gpu_thermal_floor_levels` als combined File mit 3 space-sep Werten (vorher 5 Einzel-Nodes)
+- God-Mode-ON: Gaming-Werte (85/90/95°C CPU, 0 1 2 + 75/90°C GPU)
+- God-Mode-OFF: Default-Restore (80/90/92°C, 5 4 3 + 70/85°C)
 
-### 🔧 Bugfixes
-- **God-Mode OFF restored Thermal-Trips**: Beim Deaktivieren von God-Mode werden die originalen Trip-Temperaturen wiederhergestellt – keine Überhitzungsgefahr wenn THP vorher aktiv war
-- **`revertTune()` repariert**: Setzt jetzt alle Sub-Toggles zurück auf Default (god_gpu/sched/io/vm/irq/net/props=1, wifi_boost=0) statt sinnlosem god_mode OFF/ON-Cycle
+### addkernel.txt
+- Bauplan für Kernel-Optimierungen unter `/storage/emulated/0/Download/`
+- 6 Punkte: 3x defconfig + 1x Bugfix + Modul-Seite + Build-Reihenfolge
 
-### ✨ Neuerungen
-- **Notification-Channel**: `cmd notification create_channel` in `_startup()` – stellt sicher, dass Cooldown-Benachrichtigungen auf Android 14+ zuverlässig funktionieren
-
-## v2.8 – Unified Governor + Cooldown-Hysterese + Thresholds-UI + Notification
-
-### 🔧 Bugfixes
-- **GPU + THP verschmolzen**: `gpu_adaptive()` entfernt, Logik in `_do_cooldown()` integriert – kein Konflikt mehr zwischen GPU-Adaptive und Thermal-Protect
-- **Cooldown-Hysterese**: Zustandsmaschine mit 10s-Mindestzeit pro Stufe beim Abkühlen (L4 → L3 → L2 → active) – verhindert Pendeln um die Schwelle
-- **`_set_state()`**: Zentrale State-Funktion für alle `_TSTATE`-Übergänge
-
-### ✨ Neuerungen
-- **Thresholds via WebUI**: 11 Slider auf der Settings-Seite (cooking_thresh, L2/L3/L4 Temp, GPU max, Gold max) – live anpassbar ohne Config-Edit
-- **Notification bei L3/L4**: Android-Benachrichtigung wird bei Cooldown L3/L4 gesendet, bei active/L2 wieder entfernt
-
-## v2.7 – Watchdog + Atomic Write + GPU-Adaptive Cooldown-Respekt
-
-### 🔧 Bugfixes
-- **Controller-Watchdog**: `service.sh` startet Controller jetzt in einer `while true`-Schleife (crash = automatischer Restart nach 6s)
-- **Crash-Zähler**: Bei >3 Crushes innerhalb einer Session 30s Backoff bevor Neustart
-- **Atomic Write**: `_write_data()` schreibt in Tempfile `data.txt.$$.tmp` und ersetzt per `mv` – eliminiert das Toggle-Blinken alle 15-30s (Race-Condition WebUI-Poll vs. Controller-Write)
-- **GPU-Adaptive ignoriert Cooldown**: `gpu_adaptive()` prüft `_TSTATE` via `thermal_state`-Datei; im Cooldown (L2/L3/L4) wird nicht eingegriffen – kein GPU-Throttle-Yo-Yo mehr
-
-### ✨ Neuerungen
-- **Home-Tab Thermal-Anzeige**: Zeigt `active ✅`, `🌡️ L2 76°C`, `L3 80°C` oder `L4 85°C` live in der Status-Karte
-- **`_TSTATE` exportiert**: Wird in `$MODDIR/run/thermal_state` und `data.txt` persistiert
+---
 
 ## v2.5.5 – Stale-Lock-Fix (PID-Recycling)
 
