@@ -1,5 +1,12 @@
 # Changelog – k6a-godmode
 
+## v2.10 – Thermal-Profile (Badazz/Gaming/Battery)
+
+### ✨ Neuerungen
+- **3 Profile**: 🔥 Badazz (max Performance), 🎮 Gaming (ausgewogen), 🔋 Battery (sparsam) – setzen alle 11 Thresholds auf einmal
+- **Profil-Buttons** in der Thermal-Thresholds-Card auf der Settings-Seite
+- Slider springen sofort auf die Profil-Werte, danach manuelle Verfeinerung möglich
+
 ## v2.9 – OFF-restore + revertTune + Notification-Channel
 
 ### 🔧 Bugfixes

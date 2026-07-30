@@ -1,6 +1,6 @@
-# k6a-godmode v2.9
+# k6a-godmode v2.10
 
-Unified Gaming-Mode für **SM7150 (sweet/sweet2)** — Cooldown-Hysterese, Thresholds-UI, Atomic Write, Watchdog.
+Unified Gaming-Mode für **SM7150 (sweet/sweet2)** — Thermal-Profile, Cooldown-Hysterese, Thresholds-UI, Atomic Write, Watchdog.
 
 ## Voraussetzung
 
@@ -48,6 +48,7 @@ Ohne diese Patches arbeitet das Modul ineffizient (CPU FREEZE, Yo-Yo).
 ### WebUI
 - **Home-Tab**: Live-Thermal-State, Temp, CPU/GPU MHz, RAM, Bat
 - **Settings-Tab**: 11 Threshold-Slider (Temps + GPU/Gold max)
+- **Thermal-Profile**: 1-Klick-Buttons 🔥 Badazz / 🎮 Gaming / 🔋 Battery in der Thresholds-Card
 - **Console-Tab**: CPU/GPU Boost, Governor-Wechsel, Log, Debug
 - **revertTune()**: Setzt alle Sub-Toggles zurück auf Default
 - Accent-Farbe wählbar, Fullscreen, Ripple-Effekt
