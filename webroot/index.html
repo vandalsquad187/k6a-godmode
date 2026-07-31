@@ -321,9 +321,13 @@ function setThresh(k,v){if(!d.modpath)return;ksuExec("sed -i 's|^"+k+"=.*|"+k+"=
 function applyProfile(name){
 var p={badazz:{c:85,l2:80,l3:85,l4:90,r:75,g2:650,g3:565,g4:430,c2:1.8,c3:1.6,c4:1.4},gaming:{c:78,l2:76,l3:80,l4:85,r:72,g2:565,g3:430,g4:355,c2:1.6,c3:1.4,c4:1.2},battery:{c:70,l2:70,l3:75,l4:80,r:65,g2:430,g3:355,g4:267,c2:1.4,c3:1.2,c4:1.0}};
 var v=p[name];if(!v)return;
+d.cfg_cooking_thresh=v.c;d.cfg_l2_temp=v.l2;d.cfg_l3_temp=v.l3;d.cfg_l4_temp=v.l4;d.cfg_recover_temp=v.r;
+d.cfg_l2_gpu=v.g2*1e6;d.cfg_l3_gpu=v.g3*1e6;d.cfg_l4_gpu=v.g4*1e6;
+d.cfg_l2_gold=v.c2*1e6;d.cfg_l3_gold=v.c3*1e6;d.cfg_l4_gold=v.c4*1e6;
+syncThresholds();
 var kv=[["thermal_cooking_thresh",v.c],["cooldown_l2_temp",v.l2],["cooldown_l3_temp",v.l3],["cooldown_l4_temp",v.l4],["cooldown_recover_temp",v.r],["cooldown_l2_gpu_max",v.g2*1e6],["cooldown_l3_gpu_max",v.g3*1e6],["cooldown_l4_gpu_max",v.g4*1e6],["cooldown_l2_gold_max",v.c2*1e6],["cooldown_l3_gold_max",v.c3*1e6],["cooldown_l4_gold_max",v.c4*1e6]];
 var sed=kv.map(function(x){return "s|^"+x[0]+"=.*|"+x[0]+"="+x[1]+"|"}).join(";");
-ksuExec("sed -i '"+sed+"' "+d.modpath+"/config/settings.conf");setTimeout(refreshData,500);setTimeout(syncThresholds,600)}
+ksuExec("sed -i '"+sed+"' "+d.modpath+"/config/settings.conf");setTimeout(refreshData,500)}
 
 function toggleFullscreen(on){
 try{
