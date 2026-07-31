@@ -244,6 +244,11 @@ function revertTune(){if(!d.modpath)return;var c="sed -i 's/^god_gpu=.*/god_gpu=
 // Load saed accent
 function debugDump(){document.getElementById("logBox").textContent=JSON.stringify(d,null,2)};function refreshData(){var x=new XMLHttpRequest();x.open("GET","data.txt?_="+Date.now(),true);x.onload=function(){d={};x.responseText.split("\n").forEach(function(l){var i=l.indexOf("=");if(i>0)d[l.slice(0,i)]=l.slice(i+1)});updateUI()};x.onerror=function(){fetch("data.txt?_="+Date.now()).then(function(r){return r.text()}).then(function(t){d={};t.split("\n").forEach(function(l){var i=l.indexOf("=");if(i>0)d[l.slice(0,i)]=l.slice(i+1)});updateUI()}).catch(function(){})};x.send()}
 
+// Sync thresholds from data.txt
+function syncThresholds(){
+var m={thr_cooking:['cfg_cooking_thresh','°C'],thr_l2t:['cfg_l2_temp','°C'],thr_l3t:['cfg_l3_temp','°C'],thr_l4t:['cfg_l4_temp','°C'],thr_rec:['cfg_recover_temp','°C'],thr_l2g:['cfg_l2_gpu',' MHz',1e-6],thr_l3g:['cfg_l3_gpu',' MHz',1e-6],thr_l4g:['cfg_l4_gpu',' MHz',1e-6],thr_l2c:['cfg_l2_gold',' GHz',1e-3],thr_l3c:['cfg_l3_gold',' GHz',1e-3],thr_l4c:['cfg_l4_gold',' GHz',1e-3]};
+for(var id in m){var el=document.getElementById(id);if(!el)continue;var parts=m[id],key=parts[0],suffix=parts[1],scale=parts[2]||1;var val=d[key];if(val){var num=parseInt(val)*scale;if(suffix=='°C'||suffix==' MHz'){el.value=num;document.getElementById(id+'_v').textContent=num+suffix}else{el.value=num;document.getElementById(id+'_v').textContent=(val/1000).toFixed(1)+suffix}}}
+}
 
 function updateUI(){
 document.getElementById('st').textContent=d.state||'OFF';
@@ -288,12 +293,6 @@ document.getElementById('featBadges').innerHTML=fb||'<span style="color:#6b7f9a;
 var _gg=document.getElementById('ggov'),_cm=document.getElementById('cmax'),_cg=document.getElementById('cgov');
 var _gs=d.gov_gpu||'--',_cs=d.cpu_sil_max||'?',_cgm=d.cpu_gold_max||'?',_sl=d.gov_sil||'--';
 if(_gg)_gg.textContent=_gs;if(_cm)_cm.textContent=_cs+'/'+_cgm+' MHz';if(_cg)_cg.textContent=_sl;
-
-// Sync thresholds from data.txt
-function syncThresholds(){
-var m={thr_cooking:['cfg_cooking_thresh','°C'],thr_l2t:['cfg_l2_temp','°C'],thr_l3t:['cfg_l3_temp','°C'],thr_l4t:['cfg_l4_temp','°C'],thr_rec:['cfg_recover_temp','°C'],thr_l2g:['cfg_l2_gpu',' MHz',1e-6],thr_l3g:['cfg_l3_gpu',' MHz',1e-6],thr_l4g:['cfg_l4_gpu',' MHz',1e-6],thr_l2c:['cfg_l2_gold',' GHz',1e-3],thr_l3c:['cfg_l3_gold',' GHz',1e-3],thr_l4c:['cfg_l4_gold',' GHz',1e-3]};
-for(var id in m){var el=document.getElementById(id);if(!el)continue;var parts=m[id],key=parts[0],suffix=parts[1],scale=parts[2]||1;var val=d[key];if(val){var num=parseInt(val)*scale;if(suffix=='°C'||suffix==' MHz'){el.value=num;document.getElementById(id+'_v').textContent=num+suffix}else{el.value=num;document.getElementById(id+'_v').textContent=(val/1000).toFixed(1)+suffix}}}
-}
 syncThresholds();
 }
 
