@@ -239,7 +239,7 @@ function setAccent(c){document.documentElement.style.setProperty('--a',c);var r=
 function setGov(g){ksuExec('for i in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo '+g+' >$i 2>/dev/null; done');document.getElementById('cgov').textContent=g}
 function cpuTurbo(){ksuExec('for i in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance >$i 2>/dev/null; done; sleep 30; for i in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo schedutil >$i 2>/dev/null; done');document.getElementById('cgov').textContent='🔥 30s boost'}
 function gpuTurbo(){var gp='/sys/class/kgsl/kgsl-3d0';ksuExec('echo performance >'+gp+'/devfreq/governor 2>/dev/null; cat '+gp+'/max_gpuclk >'+gp+'/devfreq/min_freq 2>/dev/null; cat '+gp+'/gpuclk >'+gp+'/devfreq/max_freq 2>/dev/null; sleep 30; echo msm-adreno-tz >'+gp+'/devfreq/governor 2>/dev/null');document.getElementById('ggov').textContent='🔥 30s boost'}
-function revertTune(){if(!d.modpath)return;var c="sed -i 's/^god_gpu=.*/god_gpu=1/;s/^god_sched=.*/god_sched=1/;s/^god_io=.*/god_io=1/;s/^god_vm=.*/god_vm=1/;s/^god_irq=.*/god_irq=1/;s/^god_net=.*/god_net=1/;s/^god_props=.*/god_props=1/;s/^wifi_boost=.*/wifi_boost=0/' "+d.modpath+"/config/settings.conf";ksuExec(c);setTimeout(refreshData,500)}
+function revertTune(){if(!d.modpath)return;var c="sed -i 's/^god_gpu=.*/god_gpu=1/;s/^god_sched=.*/god_sched=1/;s/^god_io=.*/god_io=1/;s/^god_vm=.*/god_vm=1/;s/^god_irq=.*/god_irq=1/;s/^god_net=.*/god_net=1/;s/^god_props=.*/god_props=1/;s/^wifi_boost=.*/wifi_boost=0/' "+d.modpath+"/config/settings.conf";ksuExec(c);setTimeout(refreshData,500);setTimeout(syncThresholds,600)}
 
 // Load saed accent
 function debugDump(){document.getElementById("logBox").textContent=JSON.stringify(d,null,2)};function refreshData(){var x=new XMLHttpRequest();x.open("GET","data.txt?_="+Date.now(),true);x.onload=function(){d={};x.responseText.split("\n").forEach(function(l){var i=l.indexOf("=");if(i>0)d[l.slice(0,i)]=l.slice(i+1)});updateUI()};x.onerror=function(){fetch("data.txt?_="+Date.now()).then(function(r){return r.text()}).then(function(t){d={};t.split("\n").forEach(function(l){var i=l.indexOf("=");if(i>0)d[l.slice(0,i)]=l.slice(i+1)});updateUI()}).catch(function(){})};x.send()}
@@ -299,8 +299,8 @@ syncThresholds();
 
 var _pendingGod=null;var _pendingThp=null;var _pendingWifi=null;
 function ksuExec(cmd){try{if(window.ksu&&window.ksu.exec)window.ksu.exec(cmd);else if(window.KernelSU&&window.KernelSU.exec)window.KernelSU.exec(cmd);else if(window.kernelsu&&window.kernelsu.exec)window.kernelsu.exec(cmd);else fetch('/api?cmd='+encodeURIComponent(cmd))}catch(e){}}
-function setGod(v){if(!d.modpath)return;_pendingGod=v;d.god_mode=v+'';document.getElementById('godToggle').checked=v==1||v==='1';d.state=v==1||v==='1'?'GAMING':'OFF';document.getElementById('st').textContent=d.state;ksuExec('echo "'+v+'" > '+d.modpath+'/config/god_mode');setTimeout(refreshData,500)}
-function setThp(v){if(!d.modpath)return;_pendingThp=v;d.thermal_protect=v+'';document.getElementById('thpToggle').checked=v==1||v==='1';ksuExec('echo "'+v+'" > '+d.modpath+'/config/thermal_protect');setTimeout(refreshData,500)}
+function setGod(v){if(!d.modpath)return;_pendingGod=v;d.god_mode=v+'';document.getElementById('godToggle').checked=v==1||v==='1';d.state=v==1||v==='1'?'GAMING':'OFF';document.getElementById('st').textContent=d.state;ksuExec('echo "'+v+'" > '+d.modpath+'/config/god_mode');setTimeout(refreshData,500);setTimeout(syncThresholds,600)}
+function setThp(v){if(!d.modpath)return;_pendingThp=v;d.thermal_protect=v+'';document.getElementById('thpToggle').checked=v==1||v==='1';ksuExec('echo "'+v+'" > '+d.modpath+'/config/thermal_protect');setTimeout(refreshData,500);setTimeout(syncThresholds,600)}
 
 function setSub(name,v){if(!d.modpath)return;d['god_'+name]=v+'';document.getElementById('st_'+name).checked=v==1||v==='1';ksuExec("sed -i 's/^god_"+name+"=.*/god_"+name+"="+v+"/' "+d.modpath+"/config/settings.conf")}
 
@@ -317,14 +317,14 @@ m['State']='State: '+(d.state||'OFF')+'  God: '+(d.god_mode||'0')+'  THP: '+(d.t
 document.getElementById('cmdOut').textContent=m[q]||'unknown'
 }
 
-function setWifi(v){if(!d.modpath)return;_pendingWifi=v;d.wifi_boost=v+"";document.getElementById("wifiToggle").checked=v==1||v==="1";ksuExec("sed -i 's/^wifi_boost=.*/wifi_boost="+v+"/' "+d.modpath+"/config/settings.conf");setTimeout(refreshData,500)}
+function setWifi(v){if(!d.modpath)return;_pendingWifi=v;d.wifi_boost=v+"";document.getElementById("wifiToggle").checked=v==1||v==="1";ksuExec("sed -i 's/^wifi_boost=.*/wifi_boost="+v+"/' "+d.modpath+"/config/settings.conf");setTimeout(refreshData,500);setTimeout(syncThresholds,600)}
 function setThresh(k,v){if(!d.modpath)return;ksuExec("sed -i 's|^"+k+"=.*|"+k+"="+v+"|' "+d.modpath+"/config/settings.conf")}
 function applyProfile(name){
 var p={badazz:{c:85,l2:80,l3:85,l4:90,r:75,g2:650,g3:565,g4:430,c2:1.8,c3:1.6,c4:1.4},gaming:{c:78,l2:76,l3:80,l4:85,r:72,g2:565,g3:430,g4:355,c2:1.6,c3:1.4,c4:1.2},battery:{c:70,l2:70,l3:75,l4:80,r:65,g2:430,g3:355,g4:267,c2:1.4,c3:1.2,c4:1.0}};
 var v=p[name];if(!v)return;
 var kv=[["thermal_cooking_thresh",v.c],["cooldown_l2_temp",v.l2],["cooldown_l3_temp",v.l3],["cooldown_l4_temp",v.l4],["cooldown_recover_temp",v.r],["cooldown_l2_gpu_max",v.g2*1e6],["cooldown_l3_gpu_max",v.g3*1e6],["cooldown_l4_gpu_max",v.g4*1e6],["cooldown_l2_gold_max",v.c2*1e6],["cooldown_l3_gold_max",v.c3*1e6],["cooldown_l4_gold_max",v.c4*1e6]];
 var sed=kv.map(function(x){return "s|^"+x[0]+"=.*|"+x[0]+"="+x[1]+"|"}).join(";");
-ksuExec("sed -i '"+sed+"' "+d.modpath+"/config/settings.conf");setTimeout(refreshData,500)}
+ksuExec("sed -i '"+sed+"' "+d.modpath+"/config/settings.conf");setTimeout(refreshData,500);setTimeout(syncThresholds,600)}
 
 function toggleFullscreen(on){
 try{

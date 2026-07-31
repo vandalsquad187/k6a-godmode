@@ -2,6 +2,7 @@ id=k6a_tune
 name=k6a-godmode
 version=v2.11
 versionCode=16
+author=Badazz89
 description=k6a-godmode v2.11 — GPU-Bugfix + Kernel-Synergie (Badazz/Gaming/Battery)
 icon=icon1.png
 banner=icon1.png
